@@ -254,6 +254,14 @@ function LiveInterviewInner() {
 
   const listeningForUser = phase === "listening" || phase === "user_speaking";
 
+  /** Wave animates only during real speech (AI, user dictation, or live mic input). */
+  const userMicAudible =
+    phase === "listening" && !micMuted && micLevel > 0.012;
+  const waveformActive =
+    phase === "ai_speaking" ||
+    phase === "user_speaking" ||
+    userMicAudible;
+
   if (!authReady) {
     return <LiveFallback />;
   }
@@ -434,9 +442,10 @@ function LiveInterviewInner() {
         ) : null}
         {userId && !clientApiFallback && !clientServerError && !backendMockBanner && voiceFallback ? (
           <p className="rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-950 dark:text-sky-50">
-            <strong className="font-semibold">Voice:</strong> Interviewer audio uses the placeholder path. Add{" "}
-            <code className="text-[11px]">ELEVENLABS_API_KEY</code> in the backend (and optional voice/model ids) for
-            synthesized speech, or keep using text + browser playback.
+            <strong className="font-semibold">Voice:</strong> Playback uses the placeholder audio URL. Ensure{" "}
+            <code className="text-[11px]">ELEVENLABS_API_KEY</code> is in <code className="text-[11px]">backend/.env.local</code>{" "}
+            and the backend was restarted. If the key is set, check the backend terminal for{" "}
+            <code className="text-[11px]">[voice]</code> (ElevenLabs 402, storage bucket, etc.).
           </p>
         ) : null}
         {userId && !clientApiFallback && !clientServerError && !backendMockBanner && !voiceFallback ? (
@@ -515,11 +524,7 @@ function LiveInterviewInner() {
               whatsappBubble
               elapsedSeconds={elapsedSeconds}
               micLevel={micLevel}
-              active={
-                phase === "ai_speaking" ||
-                phase === "thinking" ||
-                listeningForUser
-              }
+              active={waveformActive}
               variant="ai"
               size="cinema"
               className="mx-auto w-full max-w-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"

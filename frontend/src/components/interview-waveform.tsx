@@ -124,28 +124,41 @@ export function InterviewWaveform({
         const el = barsRef.current[i];
         if (!el) continue;
         const v = clamp(hist[i], 0.04, 1);
-        /** Minimum “floor” amplitude so it reads like WhatsApp even at low RMS. */
-        const floor = active ? 0.08 : 0.045;
-        const span = active ? 0.92 : 0.32;
-        const pct = clamp(floor + v * span, 0.06, 1);
-        el.style.height = `${(pct * 100).toFixed(2)}%`;
-        el.style.opacity = active ? String(clamp(0.35 + v * 0.65, 0.42, 1)) : String(clamp(0.35 + v * 0.3, 0.28, 0.72));
+        if (active) {
+          const floor = 0.08;
+          const span = 0.92;
+          const pct = clamp(floor + v * span, 0.06, 1);
+          el.style.height = `${(pct * 100).toFixed(2)}%`;
+          el.style.opacity = String(clamp(0.35 + v * 0.65, 0.42, 1));
+        } else {
+          /** Flat baseline — no faux “breathing” when nobody is speaking. */
+          el.style.height = "14%";
+          el.style.opacity = "0.35";
+        }
       }
     };
 
     if (reduceMotion) {
       applyHist();
       const id = window.setInterval(() => {
+        if (!active) {
+          applyHist();
+          return;
+        }
         wordPhaseRef.current += 0.07;
-        const target = active
-          ? clamp(0.35 + jitter01(0, wordPhaseRef.current) * 0.45 + Math.sin(wordPhaseRef.current * 3) * 0.08, 0.05, 0.96)
-          : 0.08;
+        const target = clamp(
+          0.35 +
+            jitter01(0, wordPhaseRef.current) * 0.45 +
+            Math.sin(wordPhaseRef.current * 3) * 0.08,
+          0.05,
+          0.96,
+        );
         levelRef.current += (target - levelRef.current) * 0.12;
         for (let i = 0; i < n - 1; i++) hist[i] = hist[i + 1];
         hist[n - 1] = clamp(levelRef.current, 0.05, 0.94);
         blurHorizontal(hist, n);
         applyHist();
-      }, active ? 150 : 400);
+      }, active ? 150 : 600);
       return () => window.clearInterval(id);
     }
 
@@ -155,20 +168,34 @@ export function InterviewWaveform({
     const tick = (now: number): void => {
       const dt = clamp((now - last) / 1000, 0, 0.05);
       last = now;
-      wordPhaseRef.current += dt * (active ? 3.8 : 0.95);
-
-      if (active) {
-        /** Simulated RMS / mic envelope (replace with analyser RMS later). */
-        const chatter = jitter01(Math.floor(now * 0.00177) % 60, wordPhaseRef.current);
-        let targetEnv = 0.28 + 0.48 * Math.pow(0.5 + 0.5 * Math.sin(wordPhaseRef.current * 2.05), 2.05);
-        if (chatter > 0.73) targetEnv *= 1.18;
-        if (Math.sin(wordPhaseRef.current * 6.21) > 0.74) targetEnv *= 0.34;
-        const burst = jitter01(Math.floor(wordPhaseRef.current * 4) % 10, now * 1e-4) * (active ? 0.07 : 0);
-        targetEnv = clamp(targetEnv + burst - 0.02, 0.08, 0.94);
-        levelRef.current += (targetEnv - levelRef.current) * clamp(22 * dt * 0.045 + 0.18, 0.12, 0.52);
-      } else {
-        levelRef.current += (0.06 + Math.sin(now * 0.0019) * 0.025 - levelRef.current) * 0.08;
+      if (!active) {
+        levelRef.current += (0.02 - levelRef.current) * 0.22;
+        for (let i = 0; i < n; i++) {
+          hist[i] += (0.04 - hist[i]) * 0.28;
+        }
+        applyHist();
+        raf = requestAnimationFrame(tick);
+        return;
       }
+
+      wordPhaseRef.current += dt * 3.8;
+
+      /** Simulated RMS / mic envelope (replace with analyser RMS later). */
+      const chatter = jitter01(Math.floor(now * 0.00177) % 60, wordPhaseRef.current);
+      let targetEnv =
+        0.28 +
+        0.48 * Math.pow(0.5 + 0.5 * Math.sin(wordPhaseRef.current * 2.05), 2.05);
+      if (chatter > 0.73) targetEnv *= 1.18;
+      if (Math.sin(wordPhaseRef.current * 6.21) > 0.74) targetEnv *= 0.34;
+      const burst =
+        jitter01(
+          Math.floor(wordPhaseRef.current * 4) % 10,
+          now * 1e-4,
+        ) * 0.07;
+      targetEnv = clamp(targetEnv + burst - 0.02, 0.08, 0.94);
+      levelRef.current +=
+        (targetEnv - levelRef.current) *
+        clamp(22 * dt * 0.045 + 0.18, 0.12, 0.52);
 
       /** “Compress” louder peaks visually like mobile recorders */
       let sample = Math.pow(clamp(levelRef.current, 0, 1), 0.78);
@@ -176,7 +203,7 @@ export function InterviewWaveform({
       if (live > 0.004) {
         sample = Math.max(sample, clamp(live * 0.92 + 0.06, 0, 1));
       }
-      sample = clamp(sample, active ? 0.03 : 0.02, 1);
+      sample = clamp(sample, 0.03, 1);
 
       for (let i = 0; i < n - 1; i++) {
         hist[i] = hist[i + 1];
@@ -184,17 +211,6 @@ export function InterviewWaveform({
       hist[n - 1] = sample;
 
       blurHorizontal(hist, n);
-
-      if (!active) {
-        for (let i = 0; i < n; i++) {
-          hist[i] = clamp(
-            hist[i] * 0.984 + (0.04 + jitter01(i, now * 2e-4) * 0.02),
-            0.035,
-            0.92,
-          );
-        }
-      }
-
       applyHist();
       raf = requestAnimationFrame(tick);
     };

@@ -36,8 +36,13 @@ export async function elevenLabsSpeakToMp3(text: string): Promise<Buffer> {
     throw new Error("ELEVENLABS_API_KEY is not set.");
   }
 
-  const voiceId =
-    process.env.ELEVENLABS_VOICE_ID?.trim() || "21m00Tcm4TlvDq8ikWAM";
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  if (!voiceId) {
+    throw new Error(
+      "ELEVENLABS_VOICE_ID is not set. Omit the API key to use placeholder audio, or set a voice ID from your ElevenLabs dashboard (free tiers often cannot use premade “library” voices via API — use an Instant Voice / clone you own, or upgrade).",
+    );
+  }
+
   const modelId =
     process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v2";
 

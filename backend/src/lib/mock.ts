@@ -21,9 +21,7 @@ export function shouldUseMockAi(): boolean {
 }
 
 export function shouldUseVoiceMock(): boolean {
-  return (
-    shouldUseMockAi() || !process.env.ELEVENLABS_API_KEY?.trim()
-  );
+  return !process.env.ELEVENLABS_API_KEY?.trim();
 }
 
 const PREMIUM_FOLLOW_SEGMENTS = [
