@@ -36,5 +36,6 @@ Open [http://localhost:3000](http://localhost:3000) for the UI; APIs run at [htt
 
 ## Learn More
 
+- **Implementation status / roadmap**: [`docs/implementation-status.md`](docs/implementation-status.md)
 - Product notes: [`docementation.md`](docementation.md)
 - Next.js 16 conventions for this repo: [`AGENTS.md`](AGENTS.md)
