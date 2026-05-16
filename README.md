@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HireMind AI
 
-## Getting Started
+Monorepo for **HireMind AI**, a voice-forward AI interview coach.
 
-First, run the development server:
+## Structure
+
+- **[`frontend/`](frontend/)** — Next.js App Router UI (Tailwind v4, shadcn/ui, Framer Motion, dual theme). Proxies `/api/*` to the backend in development.
+- **[`backend/`](backend/)** — Next.js API routes + services (OpenAI, ElevenLabs, Supabase admin, PayHere, resume PDF parsing).
+- **[`supabase/`](supabase/)** — SQL migrations (shared infra).
+
+## Prerequisites
+
+- Node 20+
+- npm (workspaces enabled at repo root)
+
+## Environment
+
+- **Backend secrets**: copy variables into [`backend/.env.local`](backend/.env.local) (`SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, optional ElevenLabs/PayHERE keys — see existing repo `.env.example` if present).
+- **Frontend public vars**: copy [`frontend/.env.example`](frontend/.env.example) → `frontend/.env.local`. Without Supabase keys you can still run guest/mock flows.
+- **Voice mock asset**: optional file at `backend/public/mock-interviewer.mp3`; otherwise set `PUBLIC_APP_URL=http://127.0.0.1:3001` so mocked audio URLs resolve.
+
+## Important: interview APIs + auth
+
+`POST /api/interview/start` expects `userId` to match a Supabase Auth user (`public.users.id` FK). Guests use the polished **mock** pipeline on the frontend. Sign up / sign in to hit real inserts once Supabase + backend env are configured.
+
+## Scripts
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install        # installs all workspaces
+npm run dev        # backend :3001 + frontend :3000 (concurrently)
+npm run build      # backend then frontend production builds
+npm run lint       # lint both packages
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3000](http://localhost:3000) for the UI; APIs run at [http://127.0.0.1:3001/api](http://127.0.0.1:3001/api).
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Product notes: [`docementation.md`](docementation.md)
+- Next.js 16 conventions for this repo: [`AGENTS.md`](AGENTS.md)
