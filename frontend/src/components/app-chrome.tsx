@@ -11,7 +11,9 @@ function isMarketingRoute(pathname: string) {
   return (
     pathname === "/" ||
     pathname.startsWith("/login") ||
-    pathname.startsWith("/register")
+    pathname.startsWith("/register") ||
+    pathname === "/privacy" ||
+    pathname === "/terms"
   );
 }
 

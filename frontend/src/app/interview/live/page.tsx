@@ -11,12 +11,13 @@ import {
   PhoneOff,
   Radio,
   Square,
+  Video,
+  VideoOff,
   Wifi,
 } from "lucide-react";
 
 import { HmCard } from "@/components/hm-card";
-import { InterviewWaveform } from "@/components/interview-waveform";
-import { RecruiterAvatar } from "@/components/recruiter-avatar";
+import { UserPresenceOrb } from "@/components/user-presence-orb";
 import { VoiceChatBubble } from "@/components/voice-chat-bubble";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useBrowserSpeechRecognition } from "@/hooks/use-browser-speech-recognition";
+import { useCameraPreview } from "@/hooks/use-camera-preview";
 import { useMicLevel } from "@/hooks/use-mic-level";
 import {
   feedbackInterviewApi,
@@ -63,6 +65,13 @@ function formatMmSs(sec: number) {
 
 function minDelay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+/** Keep status chip copy readable when persona labels are long. */
+function truncateStatusLabel(text: string, maxChars = 32): string {
+  const t = text.trim();
+  if (t.length <= maxChars) return t;
+  return `${t.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
 function LiveInterviewInner() {
@@ -118,7 +127,11 @@ function LiveInterviewInner() {
   const [answerDraft, setAnswerDraft] = useState("");
   const [bootError, setBootError] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(true);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  /** Pause browser STT while the answer field is focused so typing is not mixed with dictation. */
+  const [answerFieldFocused, setAnswerFieldFocused] = useState(false);
+  /** Front-camera preview in the user orb (replaces in-circle waveform when on). */
+  const [cameraOn, setCameraOn] = useState(false);
+  const transcriptViewportRef = useRef<HTMLDivElement | null>(null);
 
   const mode = plan === "premium" ? "premium" : "free";
   const fallbackMax = mode === "premium" ? 5 : 3;
@@ -131,7 +144,11 @@ function LiveInterviewInner() {
 
   const questionRoundDisplay = Math.min(userAnswersCount + 1, maxUserAnswers);
 
-  const speechListening = phase === "listening" && !micMuted;
+  /** Keep STT on for the whole dictation segment; `user_speaking` alone used to disable it and truncate. Pause while typing in the textarea. */
+  const speechListening =
+    (phase === "listening" || phase === "user_speaking") &&
+    !micMuted &&
+    !answerFieldFocused;
 
   const { supported: speechSupported, resetTranscript } =
     useBrowserSpeechRecognition({
@@ -145,6 +162,8 @@ function LiveInterviewInner() {
     });
 
   const micLevel = useMicLevel(speechListening);
+
+  const { videoRef: cameraVideoRef, error: cameraError } = useCameraPreview(cameraOn);
 
   const initials = displayNameFromEmail(email)
     .split(/\s+/)
@@ -168,7 +187,15 @@ function LiveInterviewInner() {
   }, [tick, authReady]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const vp = transcriptViewportRef.current;
+    if (!vp) {
+      return;
+    }
+    /** Scroll only the transcript pane — avoid scrollIntoView (it scrolls the whole window). */
+    const id = requestAnimationFrame(() => {
+      vp.scrollTo({ top: vp.scrollHeight, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
   }, [messages, phase]);
 
   useEffect(() => {
@@ -254,13 +281,11 @@ function LiveInterviewInner() {
 
   const listeningForUser = phase === "listening" || phase === "user_speaking";
 
-  /** Wave animates only during real speech (AI, user dictation, or live mic input). */
+  /** User-side mic input (dictation / open mic while listening). */
   const userMicAudible =
     phase === "listening" && !micMuted && micLevel > 0.012;
-  const waveformActive =
-    phase === "ai_speaking" ||
-    phase === "user_speaking" ||
-    userMicAudible;
+  /** In-orb waveform: local user only (not AI TTS). */
+  const userWaveActive = phase === "user_speaking" || userMicAudible;
 
   if (!authReady) {
     return <LiveFallback />;
@@ -332,14 +357,51 @@ function LiveInterviewInner() {
     }
   }
 
+  const recruiterStatusName = truncateStatusLabel(recruiterLabel);
+
   const statusLabel =
-    phase === "ai_speaking"
-      ? "AI speaking"
-      : phase === "thinking"
-        ? "Analyzing response…"
+    phase === "idle"
+      ? bootError
+        ? "Couldn’t start — check above"
+        : interviewId
+          ? "Session idle"
+          : "Preparing interview…"
+      : phase === "ai_speaking"
+        ? `${recruiterStatusName} is speaking`
+        : phase === "thinking"
+          ? finishOnceRef.current
+            ? "Wrapping up session…"
+            : "Recruiter is thinking…"
+          : phase === "user_speaking"
+            ? "You’re speaking…"
+            : phase === "listening"
+              ? micMuted
+                ? "Your turn — unmute or type"
+                : "Listening for your answer…"
+              : "Live";
+
+  const statusPillTone: "thinking" | "ai" | "listening" | "idle" =
+    phase === "thinking"
+      ? "thinking"
+      : phase === "ai_speaking"
+        ? "ai"
         : listeningForUser
-          ? "Listening…"
-          : "AI is listening";
+          ? "listening"
+          : "idle";
+
+  const statusPillClass =
+    statusPillTone === "thinking"
+      ? "border-amber-500/55 bg-amber-950/50 text-amber-50"
+      : statusPillTone === "ai"
+        ? "border-sky-400/55 bg-sky-950/55 text-sky-50 shadow-[0_20px_60px_-42px_rgb(56,189,248)]"
+        : statusPillTone === "listening"
+          ? "border-[var(--hm-neon-from)]/65 bg-purple-950/90 text-white shadow-[0_20px_60px_-40px_rgb(168,85,247)]"
+          : "border-white/15 bg-black/60 text-muted-foreground";
+
+  const statusBounce =
+    statusPillTone === "thinking" ||
+    statusPillTone === "ai" ||
+    statusPillTone === "listening";
 
   return (
     <div className="relative flex flex-col gap-6 pb-12 md:gap-10 md:pb-16">
@@ -465,7 +527,7 @@ function LiveInterviewInner() {
         ) : null}
       </div>
 
-      <div className="relative z-[1] grid gap-8 xl:grid-cols-[minmax(0,1.42fr)_minmax(328px,0.94fr)] xl:items-start">
+      <div className="relative z-[1] grid gap-8 xl:grid-cols-[minmax(0,1.42fr)_minmax(328px,0.94fr)] xl:items-stretch">
         <div className="relative overflow-hidden rounded-[1.85rem] border border-purple-500/35 bg-neutral-950/95 p-7 shadow-[0_72px_120px_-76px_oklch(0.55_0.22_286/0.28)] xl:p-10">
           <div
             className="pointer-events-none absolute -left-32 top-[-12%] size-[540px] rounded-full bg-[radial-gradient(circle_at_center,oklch(0.58_0.22_286/0.32),transparent_72%)] blur-3xl"
@@ -474,67 +536,87 @@ function LiveInterviewInner() {
           <div className="pointer-events-none absolute inset-0 hm-noise opacity-[0.08] mix-blend-overlay" aria-hidden />
 
           <div className="relative mx-auto flex max-w-xl flex-col items-center gap-8 pt-4">
-            <div className="relative">
+            <div className="relative w-full max-w-xl">
               <div
                 className="pointer-events-none absolute inset-[-24%] rounded-full bg-[radial-gradient(circle,oklch(0.85_0.08_195/0.28),transparent_70%)] blur-[72px]"
                 aria-hidden
               />
-              <div className="relative rounded-full shadow-[0_0_112px_-8px_oklch(0.62_0.22_286/0.45)] ring-4 ring-purple-500/35 ring-offset-[16px] ring-offset-black">
-                <RecruiterAvatar
-                  label={recruiterLabel}
-                  subtitle={[role, tierLabel].filter(Boolean).join(" · ") || "Interview lane"}
-                  size="xl"
-                  speaking={phase === "ai_speaking"}
-                />
+              <UserPresenceOrb
+                mediaOnly
+                className="w-full"
+                cameraOn={cameraOn}
+                videoRef={cameraVideoRef}
+                cameraError={cameraError}
+                userWaveActive={userWaveActive}
+                micMuted={micMuted}
+                micLevel={micLevel}
+                userInitials={(initials || "GU").slice(0, 2)}
+                elapsedSeconds={elapsedSeconds}
+              />
+              <div className="relative z-[1] mt-4 text-center">
+                <p className="font-mono text-xs tabular-nums text-white/55">{formatMmSs(elapsedSeconds)}</p>
+                <p className="font-display text-sm font-semibold tracking-tight text-foreground">
+                  {displayNameFromEmail(email)}
+                </p>
+                {cameraOn && cameraError ? (
+                  <p className="mx-auto mt-1 max-w-[16rem] text-xs text-amber-400" role="status">
+                    {cameraError}
+                  </p>
+                ) : null}
               </div>
             </div>
 
             <div
               className={cn(
-                "inline-flex items-center gap-3 rounded-full border px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.32em]",
-                phase === "thinking"
-                  ? "border-amber-500/55 bg-amber-950/50 text-amber-50"
-                  : listeningForUser
-                    ? "border-[var(--hm-neon-from)]/65 bg-purple-950/90 text-white shadow-[0_20px_60px_-40px_rgb(168,85,247)]"
-                    : "border-white/15 bg-black/60 text-muted-foreground",
+                "inline-flex max-w-[min(100%,24rem)] items-center gap-3 rounded-full border px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.32em]",
+                statusPillClass,
               )}
             >
-              <span className="flex h-8 items-end gap-0.5" aria-hidden>
+              <span className="flex h-8 shrink-0 items-end gap-0.5" aria-hidden>
                 {[10, 18, 26, 18, 10, 22].map((h, i) => (
                   <span
                     key={i}
                     className={cn(
                       "w-1 rounded-full bg-gradient-to-t from-[var(--hm-neon-from)] to-purple-300",
-                      (listeningForUser || phase === "thinking") && "animate-pulse",
+                      statusPillTone === "ai" && "from-sky-400 to-cyan-200",
+                      statusBounce && "animate-pulse",
                     )}
                     style={{
-                      height:
-                        listeningForUser || phase === "thinking"
-                          ? `${h + 10}px`
-                          : `${Math.round(h * 0.45)}px`,
+                      height: statusBounce
+                        ? `${h + 10}px`
+                        : `${Math.round(h * 0.45)}px`,
                       animationDelay: `${i * 95}ms`,
                     }}
                   />
                 ))}
               </span>
-              {statusLabel}
+              <span className="min-w-0 text-center leading-snug">{statusLabel}</span>
             </div>
-
-            <InterviewWaveform
-              whatsappBubble
-              elapsedSeconds={elapsedSeconds}
-              micLevel={micLevel}
-              active={waveformActive}
-              variant="ai"
-              size="cinema"
-              className="mx-auto w-full max-w-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-            />
 
             <p className="-mt-2 max-w-xl text-center text-sm leading-relaxed text-white/70">
               {currentQuestion ?? "Syncing interviewer prompt…"}
             </p>
 
-            <div className="flex w-full max-w-sm items-center justify-center gap-10 pt-4">
+            <div className="flex w-full max-w-md flex-wrap items-center justify-center gap-6 pt-4 sm:gap-10">
+              <button
+                type="button"
+                aria-pressed={cameraOn}
+                aria-label={cameraOn ? "Turn camera off" : "Turn camera on"}
+                title={cameraOn ? "Camera on" : "Camera off"}
+                onClick={() => setCameraOn((v) => !v)}
+                className={cn(
+                  "flex size-14 items-center justify-center rounded-full border-2 backdrop-blur-md transition-colors",
+                  cameraOn
+                    ? "border-sky-400/70 bg-sky-950/80 text-sky-100 hover:bg-sky-900/95"
+                    : "border-white/20 bg-purple-950/80 text-white hover:bg-purple-900/95",
+                )}
+              >
+                {cameraOn ? (
+                  <Video className="size-6" aria-hidden strokeWidth={2} />
+                ) : (
+                  <VideoOff className="size-6" aria-hidden strokeWidth={1.7} />
+                )}
+              </button>
               <button
                 type="button"
                 aria-pressed={micMuted}
@@ -584,8 +666,8 @@ function LiveInterviewInner() {
           </div>
         </div>
 
-        <HmCard className="flex flex-col gap-0 overflow-hidden rounded-[1.85rem] border border-white/10 bg-neutral-950/95 p-0 shadow-[0_0_96px_-48px_oklch(0.72_0.13_195/0.22)] xl:sticky xl:top-28">
-          <div className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
+        <HmCard className="flex h-[min(85dvh,820px)] max-h-[calc(100dvh-4.5rem)] flex-col gap-0 overflow-hidden rounded-[1.85rem] border border-white/10 bg-neutral-950/95 p-0 shadow-[0_0_96px_-48px_oklch(0.72_0.13_195/0.22)] max-xl:max-h-[min(82dvh,760px)] xl:sticky xl:top-28 xl:self-start">
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
             <div className="flex items-center gap-3">
               <Menu className="size-5 text-muted-foreground" aria-hidden />
               <span className="font-display text-lg font-semibold tracking-tight">Live transcript</span>
@@ -598,8 +680,11 @@ function LiveInterviewInner() {
             </Badge>
           </div>
 
-          <ScrollArea className="min-h-[340px] max-h-[min(56vh,520px)]">
-            <div className="flex flex-col gap-3 px-4 py-5">
+          <ScrollArea
+            viewportRef={transcriptViewportRef}
+            className="min-h-0 min-w-0 flex-1 overflow-hidden"
+          >
+            <div className="flex flex-col gap-3 px-4 py-5 pb-6">
               {messages.map((m) => (
                 <VoiceChatBubble key={m.id} role={m.role} text={m.text} />
               ))}
@@ -611,11 +696,10 @@ function LiveInterviewInner() {
                   </div>
                 </div>
               ) : null}
-              <div ref={bottomRef} />
             </div>
           </ScrollArea>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-5 py-3 text-xs text-muted-foreground">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-5 py-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-2 uppercase tracking-[0.18em]">
               <Wifi className="size-4 text-purple-400" aria-hidden strokeWidth={1.75} />
               Low latency link
@@ -625,7 +709,7 @@ function LiveInterviewInner() {
             </span>
           </div>
 
-          <div className="mx-4 mb-4 rounded-xl border border-purple-500/40 bg-purple-950/50 p-4 shadow-inner backdrop-blur-sm">
+          <div className="mx-4 mb-4 shrink-0 rounded-xl border border-purple-500/40 bg-purple-950/50 p-4 shadow-inner backdrop-blur-sm">
             <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-purple-300">Session</p>
             <p className="mt-2 font-display text-base font-semibold leading-snug text-foreground">
               {micMuted ? "Unmute to speak (or type below)." : "Mic live — browser captions your answer."}
@@ -636,15 +720,17 @@ function LiveInterviewInner() {
             </p>
           </div>
 
-          <div className="space-y-3 border-t border-white/10 p-5">
+          <div className="shrink-0 space-y-3 border-t border-white/10 p-5">
             <Textarea
               placeholder="Speak with mic unmuted or type your answer — STAR structure encouraged."
               rows={4}
               value={answerDraft}
               disabled={phase !== "listening" && phase !== "user_speaking"}
-              onFocus={() => setPhase("user_speaking")}
+              onFocus={() => {
+                setAnswerFieldFocused(true);
+              }}
               onBlur={() => {
-                if (phase === "user_speaking") setPhase("listening");
+                setAnswerFieldFocused(false);
               }}
               onChange={(e) => setAnswerDraft(e.target.value)}
               className="rounded-xl border-white/14 bg-black/45 text-[15px] text-foreground placeholder:text-muted-foreground"

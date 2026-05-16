@@ -48,10 +48,14 @@ export function SiteFooter() {
           <p className="font-medium text-foreground">Legal</p>
           <ul className="space-y-2 text-muted-foreground">
             <li>
-              <span className="cursor-not-allowed opacity-70">Privacy (soon)</span>
+              <Link href="/privacy" className="hover:text-foreground">
+                Privacy policy
+              </Link>
             </li>
             <li>
-              <span className="cursor-not-allowed opacity-70">Terms (soon)</span>
+              <Link href="/terms" className="hover:text-foreground">
+                Terms of service
+              </Link>
             </li>
           </ul>
         </div>
