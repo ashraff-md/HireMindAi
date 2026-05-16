@@ -53,21 +53,34 @@ function LinkedInGlyph(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-async function signIn(provider: "google" | "github" | "linkedin_oidc") {
+async function signIn(
+  provider: "google" | "github" | "linkedin_oidc",
+  redirectPath: string,
+) {
   const sb = createSupabaseBrowserClient();
   if (!sb) {
     return;
   }
 
+  const path = redirectPath.startsWith("/") ? redirectPath : "/dashboard";
   await sb.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: `${window.location.origin}/dashboard`,
+      redirectTo: `${window.location.origin}${path}`,
     },
   });
 }
 
-export function OAuthButtonsRow({ disabled }: { disabled?: boolean }) {
+type OAuthButtonsRowProps = {
+  disabled?: boolean;
+  /** In-app pathname after OAuth (must start with `/`, e.g. `/dashboard`). */
+  redirectPath?: string;
+};
+
+export function OAuthButtonsRow({
+  disabled,
+  redirectPath = "/dashboard",
+}: OAuthButtonsRowProps) {
   const configured = isSupabaseBrowserConfigured();
   const blocked = disabled || !configured;
   const configureHint = !configured ? "Configure OAuth in Supabase" : undefined;
@@ -80,7 +93,7 @@ export function OAuthButtonsRow({ disabled }: { disabled?: boolean }) {
         className="gap-2"
         disabled={blocked}
         title={blocked ? configureHint : undefined}
-        onClick={() => void signIn("google")}
+        onClick={() => void signIn("google", redirectPath)}
       >
         <GoogleGlyph className="size-4" />
         Google
@@ -91,7 +104,7 @@ export function OAuthButtonsRow({ disabled }: { disabled?: boolean }) {
         className="gap-2"
         disabled={blocked}
         title={blocked ? configureHint : undefined}
-        onClick={() => void signIn("github")}
+        onClick={() => void signIn("github", redirectPath)}
       >
         <GithubGlyph className="size-4" />
         GitHub
@@ -102,7 +115,7 @@ export function OAuthButtonsRow({ disabled }: { disabled?: boolean }) {
         className="gap-2"
         disabled={blocked}
         title={blocked ? configureHint : undefined}
-        onClick={() => void signIn("linkedin_oidc")}
+        onClick={() => void signIn("linkedin_oidc", redirectPath)}
       >
         <LinkedInGlyph className="size-4" />
         LinkedIn

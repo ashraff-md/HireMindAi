@@ -1,6 +1,7 @@
 import { hiremindJson } from "@/lib/hiremind-response";
 import { InterviewStartSchema } from "@/lib/schemas";
-import { shouldUseVoiceMock } from "@/lib/mock";
+import { shouldUseMockAi } from "@/lib/mock";
+import { interviewStartErrorResponse } from "@/lib/supabase-errors";
 import { startInterviewOrchestration } from "@/services/interview.service";
 
 export const runtime = "nodejs";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       userId: parsed.data.userId,
       role: parsed.data.role,
       mode: parsed.data.mode,
+      personalityId: parsed.data.personalityId,
     });
 
     return hiremindJson(
@@ -28,11 +30,18 @@ export async function POST(request: Request) {
         interviewId: data.interviewId,
         question: data.question,
         audioUrl: data.audioUrl,
+        effectivePlan: data.effectivePlan,
+        maxUserAnswers: data.maxUserAnswers,
+        voiceFallback: data.voiceFallback,
       },
-      { mock: shouldUseVoiceMock() },
+      { mock: shouldUseMockAi() },
     );
   } catch (err) {
     console.error(err);
+    const mapped = interviewStartErrorResponse(err);
+    if (mapped) {
+      return hiremindJson(mapped.body, { status: mapped.status });
+    }
     return hiremindJson({ error: "interview_start_failed" }, { status: 500 });
   }
 }

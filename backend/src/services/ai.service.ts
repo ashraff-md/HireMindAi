@@ -3,5 +3,5 @@ export {
   aiFirstInterviewQuestion,
   aiFollowUpInterviewQuestion,
   aiParseResume,
-  getOpenAiClient,
-} from "@/lib/openai";
+  getGeminiClient,
+} from "@/lib/gemini";

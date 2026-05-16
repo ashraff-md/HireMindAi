@@ -63,6 +63,7 @@ export function InterviewWaveform({
   className,
   whatsappBubble = false,
   elapsedSeconds,
+  micLevel,
 }: {
   active: boolean;
   variant?: "ai" | "user";
@@ -72,8 +73,12 @@ export function InterviewWaveform({
   whatsappBubble?: boolean;
   /** Session duration for the capsule timer (left side). */
   elapsedSeconds?: number;
+  /** Optional live microphone RMS (0–1) from Web Audio; blends with simulation. */
+  micLevel?: number;
 }) {
   const p = presets[size];
+  const micRef = useRef(micLevel ?? 0);
+  micRef.current = micLevel ?? 0;
 
   /** Flat bar fills like WhatsApp (no gradients on individual bars). */
   const barClass =
@@ -167,6 +172,10 @@ export function InterviewWaveform({
 
       /** “Compress” louder peaks visually like mobile recorders */
       let sample = Math.pow(clamp(levelRef.current, 0, 1), 0.78);
+      const live = micRef.current;
+      if (live > 0.004) {
+        sample = Math.max(sample, clamp(live * 0.92 + 0.06, 0, 1));
+      }
       sample = clamp(sample, active ? 0.03 : 0.02, 1);
 
       for (let i = 0; i < n - 1; i++) {

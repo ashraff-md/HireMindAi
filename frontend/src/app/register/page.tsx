@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -21,6 +21,8 @@ import { useAuthStore } from "@/stores/auth-store";
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const userId = useAuthStore((s) => s.userId);
+  const authReady = useAuthStore((s) => s.authReady);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,15 @@ function RegisterForm() {
   const loginHref = safeNextLogin
     ? `/login?next=${encodeURIComponent(safeNextLogin)}`
     : "/login";
+
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    router.replace(returnPath);
+  }, [authReady, userId, router, returnPath]);
+
+  if (authReady && userId) {
+    return <RegisterLoading />;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +106,7 @@ function RegisterForm() {
               .
             </p>
           ) : null}
-          <OAuthButtonsRow disabled={loading} />
+          <OAuthButtonsRow disabled={loading} redirectPath={returnPath} />
           <div className="flex items-center gap-3 py-5">
             <Separator className="flex-1" />
             <span className="shrink-0 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">

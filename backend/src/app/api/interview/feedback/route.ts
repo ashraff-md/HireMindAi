@@ -30,6 +30,7 @@ export async function POST(request: Request) {
         strengths: data.strengths,
         weaknesses: data.weaknesses,
         suggestions: data.suggestions,
+        feedbackTier: data.feedbackTier,
       },
       { mock: shouldUseMockAi() },
     );

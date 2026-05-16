@@ -13,7 +13,7 @@ import {
   Mic2,
   Settings,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -29,13 +29,12 @@ import { cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/stores/auth-store";
 
-type NavCtx = { pathname: string; hash: string };
+type NavCtx = { pathname: string };
 
 type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
-  hash?: string;
   isActive: (ctx: NavCtx) => boolean;
 };
 
@@ -44,8 +43,7 @@ const SIDEBAR_NAV: NavItem[] = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    isActive: ({ pathname, hash }) =>
-      pathname === "/dashboard" && hash !== "#recent-interviews",
+    isActive: ({ pathname }) => pathname === "/dashboard",
   },
   {
     label: "Interviews",
@@ -61,10 +59,9 @@ const SIDEBAR_NAV: NavItem[] = [
   },
   {
     label: "History",
-    href: "/dashboard",
-    hash: "#recent-interviews",
+    href: "/history",
     icon: History,
-    isActive: ({ pathname, hash }) => pathname === "/dashboard" && hash === "#recent-interviews",
+    isActive: ({ pathname }) => pathname === "/history",
   },
   {
     label: "Settings",
@@ -73,19 +70,6 @@ const SIDEBAR_NAV: NavItem[] = [
     isActive: ({ pathname }) => pathname === "/profile",
   },
 ];
-
-function useRouteHash() {
-  const [hash, setHash] = useState("");
-
-  useEffect(() => {
-    const sync = () => setHash(window.location.hash);
-    sync();
-    window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
-  }, []);
-
-  return hash;
-}
 
 function SidebarProfileChip() {
   const email = useAuthStore((s) => s.email);
@@ -128,14 +112,13 @@ function NavLinks({
 }) {
   return (
     <nav className="flex flex-col gap-0.5">
-      {SIDEBAR_NAV.map(({ label, href, icon: Icon, hash: hrefHash, isActive }) => {
+      {SIDEBAR_NAV.map(({ label, href, icon: Icon, isActive }) => {
         const active = isActive(ctx);
-        const to = hrefHash ? `${href}${hrefHash}` : href;
 
         return (
           <Link
-            key={`${href}-${hrefHash ?? "-"}`}
-            href={to}
+            key={href}
+            href={href}
             onClick={() => onItemClick?.()}
             className={cn(
               "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium tracking-tight transition-colors",
@@ -186,7 +169,6 @@ function SidebarExtras({ onLogout }: { onLogout: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const hash = useRouteHash();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   async function logout() {
@@ -200,7 +182,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
-  const navCtx: NavCtx = { pathname, hash };
+  const navCtx: NavCtx = { pathname };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">

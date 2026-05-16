@@ -4,8 +4,9 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Briefcase, Play, Search, Smile, Zap } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
+import { LockedFeatureBadge } from "@/components/locked-feature-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
   type PersonalityId,
 } from "@/lib/interview-options";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 import { useInterviewStore } from "@/stores/interview-store";
 
 const PERSONA_ICONS = {
@@ -52,13 +54,15 @@ function MiniStatBar({
 
 export default function InterviewSetupPage() {
   const router = useRouter();
+  const plan = useAuthStore((s) => s.plan);
+  const premium = plan === "premium";
   const resetSession = useInterviewStore((s) => s.resetSession);
   const setMeta = useInterviewStore((s) => s.setMeta);
 
   const defaultRole =
     JOB_ROLES.find((r) => r === "Product Manager") ?? JOB_ROLES[0] ?? "Product Manager";
 
-  const [role, setRole] = useState(defaultRole);
+  const [role, setRole] = useState<string>(defaultRole);
   const [personalityId, setPersonalityId] = useState<PersonalityId>(
     INTERVIEW_PERSONALITIES[0]?.id ?? "corporate_hr",
   );
@@ -68,6 +72,12 @@ export default function InterviewSetupPage() {
 
   const personality = personalityById(personalityId);
   const difficulty = difficultyById(difficultyId);
+
+  useEffect(() => {
+    if (!premium && personalityId !== "corporate_hr") {
+      setPersonalityId(INTERVIEW_PERSONALITIES[0]?.id ?? "corporate_hr");
+    }
+  }, [premium, personalityId]);
 
   const formattedDate = useMemo(
     () =>
@@ -80,18 +90,21 @@ export default function InterviewSetupPage() {
   );
 
   function handleStart() {
+    const effectivePersonality: PersonalityId =
+      premium ? personalityId : INTERVIEW_PERSONALITIES[0]?.id ?? "corporate_hr";
+    const effectivePersonalityMeta = personalityById(effectivePersonality);
     resetSession();
     setMeta({
       role,
-      interviewType: `${personality.label} · ${difficulty.label}`,
-      personalityId,
-      personalityLabel: personality.label,
+      interviewType: `${effectivePersonalityMeta.label} · ${difficulty.label}`,
+      personalityId: effectivePersonality,
+      personalityLabel: effectivePersonalityMeta.label,
       difficultyId,
       difficultyLabel: difficulty.label,
     });
     const qs = new URLSearchParams({
       role,
-      personality: personalityId,
+      personality: effectivePersonality,
       difficulty: difficultyId,
     });
     router.push(`/interview/live?${qs.toString()}`);
@@ -202,22 +215,31 @@ export default function InterviewSetupPage() {
           </section>
 
           {/* AI Personality */}
-          <section className="rounded-[1.65rem] border border-white/65 bg-background/88 p-7 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-card/72 md:p-8">
+          <section className="relative rounded-[1.65rem] border border-white/65 bg-background/88 p-7 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-card/72 md:p-8">
+            {!premium ? (
+              <LockedFeatureBadge className="absolute right-7 top-7 z-10" />
+            ) : null}
             <h2 className="font-display text-lg font-semibold tracking-tight">AI personality</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Vocal tone, empathy balance, and how tightly feedback lands.
+              {!premium ? " Free tier uses the professional interviewer; upgrade to unlock more styles." : null}
             </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className={cn("mt-6 grid gap-4 sm:grid-cols-3", !premium && "opacity-95")}>
               {INTERVIEW_PERSONALITIES.map((p) => {
                 const Icon = PERSONA_ICONS[p.id];
+                const locked = !premium && p.id !== "corporate_hr";
                 const picked = personalityId === p.id;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setPersonalityId(p.id)}
+                    disabled={locked}
+                    onClick={() => {
+                      if (!locked) setPersonalityId(p.id);
+                    }}
                     className={cn(
                       "flex flex-col gap-4 rounded-[1.25rem] border p-6 text-left transition-all",
+                      locked && "cursor-not-allowed opacity-55",
                       picked
                         ? "border-[var(--hm-neon-from)]/92 bg-purple-950/90 text-white shadow-lg shadow-purple-950/52 dark:bg-primary/[0.82] dark:shadow-purple-950/45"
                         : "border-border/75 bg-muted/48 hover:bg-muted hover:shadow-sm dark:border-white/13 dark:bg-black/52 dark:hover:bg-white/10",

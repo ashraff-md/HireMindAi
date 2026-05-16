@@ -1,60 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, Play, Zap } from "lucide-react";
+import { History, Play } from "lucide-react";
 import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { displayNameFromEmail } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
-
-const CREDITS_DISPLAY = "1,240";
-
-const METRICS = [
-  {
-    label: "Communication",
-    value: 88,
-    delta: "+4%",
-    gradient: "from-teal-400 to-cyan-500",
-    deltaTone: "text-teal-600 dark:text-teal-400",
-  },
-  {
-    label: "Technical skills",
-    value: 92,
-    delta: "+12%",
-    gradient: "from-purple-400 to-[var(--hm-neon-from)]",
-    deltaTone: "text-purple-600 dark:text-purple-400",
-  },
-] as const;
-
-const RECENT = [
-  {
-    id: "r1",
-    role: "Senior Full-Stack Engineer",
-    company: "Google",
-    date: "June 22, 2026",
-    duration: "28 min · Voice loop",
-    score: 84,
-  },
-  {
-    id: "r2",
-    role: "Systems Architect",
-    company: "Stripe",
-    date: "June 18, 2026",
-    duration: "32 min · Deep systems",
-    score: 78,
-  },
-  {
-    id: "r3",
-    role: "Backend Engineer",
-    company: "Cloudflare",
-    date: "June 12, 2026",
-    duration: "24 min · Go stack",
-    score: 91,
-  },
-];
 
 function HeroWavesBg() {
   return (
@@ -85,30 +39,17 @@ function HeroWavesBg() {
   );
 }
 
-function MetricBars() {
+function DashboardEmptyHint({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
   return (
-    <div className="grid gap-4">
-      {METRICS.map(({ label, value, delta, gradient, deltaTone }) => (
-        <div
-          key={label}
-          className="rounded-2xl border border-white/55 bg-background/75 p-4 shadow-inner backdrop-blur-md dark:border-white/10 dark:bg-black/35"
-        >
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="font-medium text-foreground">{label}</span>
-            <span className={cn("shrink-0 font-medium", deltaTone)}>{delta}</span>
-          </div>
-          <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-muted dark:bg-black/55">
-            <div
-              className={cn("h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ease-out", gradient)}
-              style={{ width: `${value}%` }}
-            />
-          </div>
-          <p className="mt-4 text-right font-display text-xl font-semibold tabular-nums">
-            <span className="text-foreground">{value}</span>
-            <span className="text-muted-foreground">/100</span>
-          </p>
-        </div>
-      ))}
+    <div className="rounded-2xl border border-white/55 bg-background/75 p-6 text-center shadow-inner backdrop-blur-md dark:border-white/10 dark:bg-black/35 md:p-8">
+      <p className="font-medium text-foreground">{title}</p>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
 }
@@ -150,15 +91,9 @@ export default function DashboardPage() {
               Welcome back, {greetingName}.
             </h1>
             <p className="mt-2 max-w-2xl text-base text-muted-foreground md:text-lg">
-              Your AI readiness score has improved by 12% this week — personas, pacing, and debrief cues are now
-              sharper on telemetry.
+              Start a practice session or open analytics when you have completed interviews to review.
             </p>
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-primary/35 bg-[linear-gradient(110deg,var(--muted),transparent)] px-4 py-2.5 text-sm backdrop-blur-sm">
-          <Zap className="size-[18px] text-amber-500" aria-hidden />
-          <span className="font-semibold tracking-tight uppercase text-muted-foreground">AI credits · </span>
-          <span className="font-display text-[15px] font-semibold">{CREDITS_DISPLAY} left</span>
         </div>
       </div>
 
@@ -174,8 +109,8 @@ export default function DashboardPage() {
                 Master your next technical interview with HireMind&nbsp;AI.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-white/76">
-                Personalized mock sessions with real-time sentiment overlays and sharper technical probes — calibrated
-                to your target role ladder.
+                Voice-led practice sessions with pacing and feedback tailored to your target role — so you show up calm
+                and clear.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
@@ -204,52 +139,52 @@ export default function DashboardPage() {
 
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Performance pulse</p>
-          <MetricBars />
+          <DashboardEmptyHint
+            title="No performance data yet"
+            body="Scores and skill breakdowns will appear here after you complete at least one interview with feedback."
+          />
         </div>
       </section>
 
-      {/* Recent interviews */}
-      <section id="recent-interviews" className="scroll-mt-28 space-y-5">
+      {/* Interview history shortcut */}
+      <section className="scroll-mt-28 space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/80 pb-4">
           <div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Recent interviews</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Highest-signal rehearsals from your last onboarding cycle.</p>
+            <h2 className="font-display text-2xl font-semibold tracking-tight">Interview history</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Browse saved sessions with dates and roles — open details and analytics from the dedicated history tab.
+            </p>
           </div>
           <Link
-            href="/dashboard#recent-interviews"
+            href="/interview/setup"
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-mr-2 text-muted-foreground hover:text-foreground")}
           >
-            View full history →
+            Start an interview →
           </Link>
         </div>
 
-        <ul className="space-y-3">
-          {RECENT.map((row) => (
-            <li
-              key={row.id}
-              className="grid gap-4 rounded-2xl border border-white/65 bg-background/90 p-5 shadow-[0_12px_40px_-32px_oklch(0.45_0.2_286/0.45)] backdrop-blur-md transition-colors hover:border-primary/35 dark:border-white/10 dark:bg-card/58 md:grid-cols-[auto_1fr_auto] md:items-center md:gap-6"
+        <Link
+          href="/history"
+          className="flex flex-col gap-5 rounded-2xl border border-border/80 bg-card/55 p-6 shadow-sm transition-colors hover:border-primary/35 hover:bg-muted/40 md:flex-row md:items-center md:justify-between md:p-7"
+        >
+          <div className="flex items-start gap-4">
+            <div
+              aria-hidden
+              className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--hm-neon-from)]/78 to-[var(--hm-neon-to)] text-primary-foreground shadow-md"
             >
-              <div
-                aria-hidden
-                className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--hm-neon-from)]/88 to-[var(--hm-neon-to)] text-white shadow-lg shadow-purple-900/35"
-              >
-                <Building2 className="size-7 opacity-92" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-display text-[17px] font-semibold leading-snug">{row.role}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {row.company} · <time dateTime={row.date}>{row.date}</time> · <span>{row.duration}</span>
-                </p>
-              </div>
-              <div className="flex items-center justify-between gap-4 md:flex-col md:items-end md:justify-center">
-                <p className="font-display text-2xl font-semibold tabular-nums">{row.score}%</p>
-                <Button variant="outline" size="sm" disabled className="rounded-lg">
-                  Replay coming soon
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+              <History className="size-7 opacity-92" strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0 text-left">
+              <p className="font-display text-lg font-semibold tracking-tight">Open history tab</p>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                Sessions you complete will appear in a chronological list once they are synced to your account.
+              </p>
+            </div>
+          </div>
+          <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 self-start rounded-xl md:self-center")}>
+            View history →
+          </span>
+        </Link>
       </section>
     </div>
   );

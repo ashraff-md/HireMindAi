@@ -1,9 +1,12 @@
 import { z } from "zod";
 
+export type FeedbackTier = "basic" | "full";
+
 export const InterviewStartSchema = z.object({
   userId: z.string().uuid(),
   role: z.string().min(1).max(200),
   mode: z.enum(["free", "premium"]).optional().default("free"),
+  personalityId: z.string().min(1).max(64).optional(),
 });
 
 export const InterviewRespondSchema = z.object({

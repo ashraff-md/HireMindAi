@@ -23,6 +23,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useBrowserSpeechRecognition } from "@/hooks/use-browser-speech-recognition";
+import { useMicLevel } from "@/hooks/use-mic-level";
 import {
   feedbackInterviewApi,
   respondInterviewApi,
@@ -33,6 +35,8 @@ import { displayNameFromEmail } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useInterviewStore } from "@/stores/interview-store";
+
+const MAX_SESSION_SEC = 5 * 60;
 
 async function playOptionalAudio(url: string) {
   if (!url?.trim()) {
@@ -57,6 +61,10 @@ function formatMmSs(sec: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function minDelay(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
 function LiveInterviewInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,6 +74,8 @@ function LiveInterviewInner() {
 
   const personalityLabelStore = useInterviewStore((s) => s.personalityLabel);
   const difficultyLabelStore = useInterviewStore((s) => s.difficultyLabel);
+  const personalityIdStore = useInterviewStore((s) => s.personalityId);
+
   const recruiterLabel =
     personalityLabelStore.trim() ||
     (personalityParam ? personalityById(personalityParam).label : "AI Recruiter");
@@ -84,15 +94,25 @@ function LiveInterviewInner() {
   const elapsedSeconds = useInterviewStore((s) => s.elapsedSeconds);
   const currentQuestion = useInterviewStore((s) => s.currentQuestion);
   const backendMockBanner = useInterviewStore((s) => s.backendMockBanner);
+  const voiceFallback = useInterviewStore((s) => s.voiceFallback);
+  const clientApiFallback = useInterviewStore((s) => s.clientApiFallback);
+  const clientServerError = useInterviewStore((s) => s.clientServerError);
+  const serverErrorHint = useInterviewStore((s) => s.serverErrorHint);
   const interviewId = useInterviewStore((s) => s.interviewId);
+  const maxUserAnswersStore = useInterviewStore((s) => s.maxUserAnswers);
 
   const bootSeq = useRef(0);
+  const finishOnceRef = useRef(false);
 
   const tick = useInterviewStore((s) => s.tick);
   const setPhase = useInterviewStore((s) => s.setPhase);
   const pushMessage = useInterviewStore((s) => s.pushMessage);
   const setCurrentQuestion = useInterviewStore((s) => s.setCurrentQuestion);
   const setBackendMockBanner = useInterviewStore((s) => s.setBackendMockBanner);
+  const setVoiceFallback = useInterviewStore((s) => s.setVoiceFallback);
+  const setClientApiFallback = useInterviewStore((s) => s.setClientApiFallback);
+  const setClientServerError = useInterviewStore((s) => s.setClientServerError);
+  const setServerErrorHint = useInterviewStore((s) => s.setServerErrorHint);
   const setFeedback = useInterviewStore((s) => s.setFeedback);
 
   const [answerDraft, setAnswerDraft] = useState("");
@@ -101,6 +121,30 @@ function LiveInterviewInner() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const mode = plan === "premium" ? "premium" : "free";
+  const fallbackMax = mode === "premium" ? 5 : 3;
+  const maxUserAnswers = maxUserAnswersStore ?? fallbackMax;
+
+  const userAnswersCount = useMemo(
+    () => messages.filter((m) => m.role === "user").length,
+    [messages],
+  );
+
+  const questionRoundDisplay = Math.min(userAnswersCount + 1, maxUserAnswers);
+
+  const speechListening = phase === "listening" && !micMuted;
+
+  const { supported: speechSupported, resetTranscript } =
+    useBrowserSpeechRecognition({
+      enabled: speechListening,
+      onText: (text) => {
+        setAnswerDraft(text);
+        if (text.trim()) {
+          setPhase("user_speaking");
+        }
+      },
+    });
+
+  const micLevel = useMicLevel(speechListening);
 
   const initials = displayNameFromEmail(email)
     .split(/\s+/)
@@ -128,6 +172,21 @@ function LiveInterviewInner() {
   }, [messages, phase]);
 
   useEffect(() => {
+    if (
+      !authReady ||
+      !interviewId ||
+      phase === "thinking" ||
+      finishOnceRef.current
+    ) {
+      return;
+    }
+    if (elapsedSeconds >= MAX_SESSION_SEC) {
+      finishOnceRef.current = true;
+      void finishInterview();
+    }
+  }, [authReady, elapsedSeconds, interviewId, phase]);
+
+  useEffect(() => {
     if (!authReady) {
       return;
     }
@@ -144,11 +203,13 @@ function LiveInterviewInner() {
 
       try {
         const uid = useAuthStore.getState().userId;
+        const pid = useInterviewStore.getState().personalityId;
 
         const res = await startInterviewApi({
           role,
           mode,
           userId: uid,
+          personalityId: pid || personalityParam || undefined,
         });
 
         if (cancelled || bootId !== bootSeq.current) {
@@ -156,11 +217,22 @@ function LiveInterviewInner() {
         }
 
         iv.setInterviewId(res.interviewId);
-        iv.setBackendMockBanner(Boolean(res.mock));
+        iv.setMaxUserAnswers(res.maxUserAnswers ?? null);
+        iv.setClientServerError(Boolean(res.serverError));
+        iv.setServerErrorHint(
+          res.serverError ? (res.serverHint?.trim() || null) : null,
+        );
+        iv.setClientApiFallback(Boolean(res.clientFallback));
+        iv.setBackendMockBanner(
+          Boolean(res.serverError) || Boolean(res.clientFallback)
+            ? false
+            : Boolean(res.mock),
+        );
+        iv.setVoiceFallback(Boolean(res.voiceFallback));
         iv.pushMessage("ai", res.question);
         iv.setCurrentQuestion(res.question);
         iv.setPhase("ai_speaking");
-        await playOptionalAudio(res.audioUrl);
+        await Promise.all([playOptionalAudio(res.audioUrl), minDelay(400)]);
         if (cancelled || bootId !== bootSeq.current) {
           return;
         }
@@ -178,7 +250,7 @@ function LiveInterviewInner() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, role, mode]);
+  }, [authReady, role, mode, personalityParam]);
 
   const listeningForUser = phase === "listening" || phase === "user_speaking";
 
@@ -186,28 +258,64 @@ function LiveInterviewInner() {
     return <LiveFallback />;
   }
 
-  async function submitAnswer() {
-    const text = answerDraft.trim();
-    if (!text || !interviewId) {
+  async function finishInterview() {
+    if (!interviewId || finishOnceRef.current) {
       return;
     }
 
+    finishOnceRef.current = true;
+    setPhase("thinking");
+    try {
+      await minDelay(900);
+      const fb = await feedbackInterviewApi({ interviewId, userId });
+      setFeedback(fb);
+      router.push("/interview/feedback");
+    } catch {
+      finishOnceRef.current = false;
+      setPhase("listening");
+    }
+  }
+
+  async function submitAnswer() {
+    const text = answerDraft.trim();
+    if (!text || !interviewId || finishOnceRef.current) {
+      return;
+    }
+
+    resetTranscript();
     setAnswerDraft("");
     setPhase("thinking");
     pushMessage("user", text);
 
     try {
-      const res = await respondInterviewApi({
-        interviewId,
-        answer: text,
-        userId,
-      });
+      const [res] = await Promise.all([
+        respondInterviewApi({
+          interviewId,
+          answer: text,
+          userId,
+        }),
+        minDelay(1200),
+      ]);
+
+      setClientServerError(Boolean(res.serverError));
+      setServerErrorHint(
+        res.serverError ? (res.serverHint?.trim() || null) : null,
+      );
+      setClientApiFallback(Boolean(res.clientFallback));
+      setBackendMockBanner(
+        Boolean(res.serverError) || Boolean(res.clientFallback)
+          ? false
+          : Boolean(res.mock),
+      );
+      setVoiceFallback(Boolean(res.voiceFallback));
+
+      if (res.done) {
+        await finishInterview();
+        return;
+      }
 
       pushMessage("ai", res.nextQuestion);
       setCurrentQuestion(res.nextQuestion);
-      if (res.mock) {
-        setBackendMockBanner(true);
-      }
       setPhase("ai_speaking");
       await playOptionalAudio(res.audioUrl);
       setPhase("listening");
@@ -216,20 +324,14 @@ function LiveInterviewInner() {
     }
   }
 
-  async function finishInterview() {
-    if (!interviewId) {
-      return;
-    }
-
-    setPhase("thinking");
-    try {
-      const fb = await feedbackInterviewApi({ interviewId, userId });
-      setFeedback(fb);
-      router.push("/interview/feedback");
-    } catch {
-      setPhase("listening");
-    }
-  }
+  const statusLabel =
+    phase === "ai_speaking"
+      ? "AI speaking"
+      : phase === "thinking"
+        ? "Analyzing response…"
+        : listeningForUser
+          ? "Listening…"
+          : "AI is listening";
 
   return (
     <div className="relative flex flex-col gap-6 pb-12 md:gap-10 md:pb-16">
@@ -250,7 +352,7 @@ function LiveInterviewInner() {
           </Link>
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
           <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-black/70 px-5 py-2.5 backdrop-blur-md">
             <span className="relative flex size-2 shrink-0">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-60" />
@@ -261,6 +363,9 @@ function LiveInterviewInner() {
               Live session
             </span>
           </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            Question {questionRoundDisplay} of {maxUserAnswers} · {plan} lane
+          </p>
         </div>
 
         <div className="flex items-center justify-between gap-4 sm:justify-end">
@@ -286,19 +391,64 @@ function LiveInterviewInner() {
       </header>
 
       <div className="relative z-[1] flex flex-col gap-3">
-        {backendMockBanner ? (
+        {userId && clientServerError ? (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-950 dark:text-red-50">
+            <p>
+              <strong className="font-semibold">Interview API error (5xx).</strong> Check the{" "}
+              <strong className="font-medium">backend terminal</strong> for the stack trace. Typical fixes: apply
+              Supabase migrations so <code className="text-[11px]">public.users</code> exists and your account has a
+              mirror row, confirm <code className="text-[11px]">SUPABASE_SERVICE_ROLE_KEY</code> and{" "}
+              <code className="text-[11px]">GEMINI_API_KEY</code> in{" "}
+              <code className="text-[11px]">backend/.env.local</code>, then restart the backend on port 3001. Practice
+              prompts are shown until the server succeeds.
+            </p>
+            {serverErrorHint ? (
+              <p className="mt-2 border-t border-red-500/25 pt-2 text-xs leading-relaxed text-red-900/95 dark:text-red-100/95">
+                {serverErrorHint}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {userId && clientApiFallback && !clientServerError ? (
+          <p className="rounded-xl border border-amber-500/45 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-950 dark:text-amber-50">
+            <strong className="font-semibold">Could not reach the interview API.</strong> Ensure the backend is
+            running (e.g. port 3001), <code className="text-[11px]">NEXT_PUBLIC_API_URL</code> matches if you use
+            it, and try again. Practice prompts are shown until the connection works.
+          </p>
+        ) : null}
+        {!userId ? (
+          <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-2.5 text-sm text-foreground">
+            <strong className="font-semibold">Sign in</strong> for cloud interviews (Gemini + your Supabase account).
+            Until then, this page uses offline practice prompts only — nothing is wrong with your setup.
+          </p>
+        ) : null}
+        {userId && !clientApiFallback && !clientServerError && backendMockBanner ? (
+          <p className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-2.5 text-sm text-orange-950 dark:text-orange-50">
+            <strong className="font-semibold">Cloud AI is not configured.</strong> In{" "}
+            <code className="text-[11px]">backend/.env.local</code> set{" "}
+            <code className="text-[11px]">GEMINI_API_KEY</code> (or <code className="text-[11px]">GOOGLE_AI_API_KEY</code>
+            ), Supabase <code className="text-[11px]">SUPABASE_SERVICE_ROLE_KEY</code> and URL, apply migrations, then
+            restart the backend. Details: <strong className="font-medium">README.md</strong> and{" "}
+            <strong className="font-medium">backend/.env.example</strong>.
+          </p>
+        ) : null}
+        {userId && !clientApiFallback && !clientServerError && !backendMockBanner && voiceFallback ? (
           <p className="rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-950 dark:text-sky-50">
-            Demo mode · Responses may be mocked (<code className="text-[11px]">x-hiremind-mock</code>).
+            <strong className="font-semibold">Voice:</strong> Interviewer audio uses the placeholder path. Add{" "}
+            <code className="text-[11px]">ELEVENLABS_API_KEY</code> in the backend (and optional voice/model ids) for
+            synthesized speech, or keep using text + browser playback.
           </p>
-        ) : userId ? (
+        ) : null}
+        {userId && !clientApiFallback && !clientServerError && !backendMockBanner && !voiceFallback ? (
           <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-950 dark:text-emerald-50">
-            Authenticated pipeline — wired to backend when configured.
+            Live pipeline: cloud AI and audio are active for this session.
           </p>
-        ) : (
-          <p className="rounded-xl border border-amber-500/25 bg-amber-500/12 px-4 py-2.5 text-xs">
-            Guest session · mock replies only unless you sign in.
+        ) : null}
+        {!speechSupported ? (
+          <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-muted-foreground">
+            Voice dictation needs a Chromium browser (Chrome or Edge) with mic access — you can still type answers.
           </p>
-        )}
+        ) : null}
         {bootError ? (
           <p className="text-sm text-destructive" role="alert">
             {bootError}
@@ -307,7 +457,6 @@ function LiveInterviewInner() {
       </div>
 
       <div className="relative z-[1] grid gap-8 xl:grid-cols-[minmax(0,1.42fr)_minmax(328px,0.94fr)] xl:items-start">
-        {/* Main stage */}
         <div className="relative overflow-hidden rounded-[1.85rem] border border-purple-500/35 bg-neutral-950/95 p-7 shadow-[0_72px_120px_-76px_oklch(0.55_0.22_286/0.28)] xl:p-10">
           <div
             className="pointer-events-none absolute -left-32 top-[-12%] size-[540px] rounded-full bg-[radial-gradient(circle_at_center,oklch(0.58_0.22_286/0.32),transparent_72%)] blur-3xl"
@@ -334,9 +483,11 @@ function LiveInterviewInner() {
             <div
               className={cn(
                 "inline-flex items-center gap-3 rounded-full border px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.32em]",
-                listeningForUser
-                  ? "border-[var(--hm-neon-from)]/65 bg-purple-950/90 text-white shadow-[0_20px_60px_-40px_rgb(168,85,247)]"
-                  : "border-white/15 bg-black/60 text-muted-foreground",
+                phase === "thinking"
+                  ? "border-amber-500/55 bg-amber-950/50 text-amber-50"
+                  : listeningForUser
+                    ? "border-[var(--hm-neon-from)]/65 bg-purple-950/90 text-white shadow-[0_20px_60px_-40px_rgb(168,85,247)]"
+                    : "border-white/15 bg-black/60 text-muted-foreground",
               )}
             >
               <span className="flex h-8 items-end gap-0.5" aria-hidden>
@@ -345,21 +496,25 @@ function LiveInterviewInner() {
                     key={i}
                     className={cn(
                       "w-1 rounded-full bg-gradient-to-t from-[var(--hm-neon-from)] to-purple-300",
-                      listeningForUser && "animate-pulse",
+                      (listeningForUser || phase === "thinking") && "animate-pulse",
                     )}
                     style={{
-                      height: listeningForUser ? `${h + 10}px` : `${Math.round(h * 0.45)}px`,
+                      height:
+                        listeningForUser || phase === "thinking"
+                          ? `${h + 10}px`
+                          : `${Math.round(h * 0.45)}px`,
                       animationDelay: `${i * 95}ms`,
                     }}
                   />
                 ))}
               </span>
-              {phase === "ai_speaking" ? "AI speaking" : "AI is listening"}
+              {statusLabel}
             </div>
 
             <InterviewWaveform
               whatsappBubble
               elapsedSeconds={elapsedSeconds}
+              micLevel={micLevel}
               active={
                 phase === "ai_speaking" ||
                 phase === "thinking" ||
@@ -466,18 +621,19 @@ function LiveInterviewInner() {
           </div>
 
           <div className="mx-4 mb-4 rounded-xl border border-purple-500/40 bg-purple-950/50 p-4 shadow-inner backdrop-blur-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-purple-300">Upcoming topic</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-purple-300">Session</p>
             <p className="mt-2 font-display text-base font-semibold leading-snug text-foreground">
-              Cultural alignment &amp; leadership style
+              {micMuted ? "Unmute to speak (or type below)." : "Mic live — browser captions your answer."}
             </p>
             <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-              Map exec influence and team calibration without sacrificing authenticity.
+              Role: {role}
+              {personalityIdStore ? ` · Persona: ${recruiterLabel}` : null}
             </p>
           </div>
 
           <div className="space-y-3 border-t border-white/10 p-5">
             <Textarea
-              placeholder="Draft your spoken answer — STAR structure encouraged."
+              placeholder="Speak with mic unmuted or type your answer — STAR structure encouraged."
               rows={4}
               value={answerDraft}
               disabled={phase !== "listening" && phase !== "user_speaking"}

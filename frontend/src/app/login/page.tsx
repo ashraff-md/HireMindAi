@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -21,6 +21,8 @@ import { useAuthStore } from "@/stores/auth-store";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const userId = useAuthStore((s) => s.userId);
+  const authReady = useAuthStore((s) => s.authReady);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,15 @@ function LoginForm() {
     ? `/register?next=${encodeURIComponent(safeNextRegister)}`
     : "/register";
 
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    router.replace(returnPath);
+  }, [authReady, userId, router, returnPath]);
+
+  if (authReady && userId) {
+    return <LoginLoading />;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -46,7 +57,10 @@ function LoginForm() {
     }
 
     setLoading(true);
-    const { error: signErr } = await sb.auth.signInWithPassword({
+    const {
+      data: { session },
+      error: signErr,
+    } = await sb.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -57,15 +71,18 @@ function LoginForm() {
       return;
     }
 
-    const { data: sessionData } = await sb.auth.getSession();
+    if (!session?.user) {
+      setError(
+        "Signed in but no active session returned. Confirm your email if required, then try again.",
+      );
+      return;
+    }
+
     useAuthStore
       .getState()
-      .setAuth(
-        sessionData.session?.user.id ?? null,
-        sessionData.session?.user.email ?? null,
-      );
+      .setAuth(session.user.id, session.user.email ?? null);
     useAuthStore.getState().setAuthReady(true);
-    router.push(returnPath);
+    router.replace(returnPath);
     router.refresh();
   }
 
@@ -90,7 +107,7 @@ function LoginForm() {
               .
             </p>
           ) : null}
-          <OAuthButtonsRow disabled={loading} />
+          <OAuthButtonsRow disabled={loading} redirectPath={returnPath} />
           <div className="flex items-center gap-3 py-5">
             <Separator className="flex-1" />
             <span className="shrink-0 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">

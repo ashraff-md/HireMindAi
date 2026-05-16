@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { FooterAccountLinks } from "@/components/footer-account-links";
+
 export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-white/10 bg-[oklch(0.12_0.02_285)]/90 backdrop-blur-xl dark:bg-black/50">
@@ -38,21 +40,7 @@ export function SiteFooter() {
         <div className="space-y-3 text-sm">
           <p className="font-medium text-foreground">Account</p>
           <ul className="space-y-2 text-muted-foreground">
-            <li>
-              <Link href="/login" className="hover:text-foreground">
-                Login
-              </Link>
-            </li>
-            <li>
-              <Link href="/register" className="hover:text-foreground">
-                Register
-              </Link>
-            </li>
-            <li>
-              <Link href="/profile" className="hover:text-foreground">
-                Profile
-              </Link>
-            </li>
+            <FooterAccountLinks />
           </ul>
         </div>
 

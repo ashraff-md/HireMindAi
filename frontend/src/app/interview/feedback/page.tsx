@@ -17,11 +17,14 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import type { FeedbackTier } from "@/lib/types";
 import { useInterviewStore } from "@/stores/interview-store";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function FeedbackPage() {
   const router = useRouter();
   const feedback = useInterviewStore((s) => s.feedback);
+  const plan = useAuthStore((s) => s.plan);
   const [downloadNote, setDownloadNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,11 +37,30 @@ export default function FeedbackPage() {
     return null;
   }
 
-  const sections = [
-    { title: "Strengths", items: feedback.strengths },
-    { title: "Growth areas", items: feedback.weaknesses },
-    { title: "Next reps", items: feedback.suggestions },
-  ];
+  const tier: FeedbackTier =
+    feedback.feedbackTier ?? (plan === "premium" ? "full" : "basic");
+  const isFull = tier === "full";
+
+  const feedbackSourceNote = feedback.serverError
+    ? feedback.serverHint?.trim()
+      ? feedback.serverHint.trim()
+      : "Practice summary (feedback API returned a server error — check backend logs, Supabase migrations, and env)."
+    : feedback.clientFallback
+      ? "Practice summary (interview API was unreachable — check that the backend is running and NEXT_PUBLIC_API_URL matches)."
+      : feedback.mock
+        ? "Estimated from the offline evaluator — add Gemini and Supabase env vars on the backend for live scoring."
+        : "From your cloud interview session.";
+
+  const sections = isFull
+    ? [
+        { title: "Strengths", items: feedback.strengths },
+        { title: "Growth areas", items: feedback.weaknesses },
+        { title: "Next reps", items: feedback.suggestions },
+      ]
+    : [
+        { title: "Strengths", items: feedback.strengths.slice(0, 3) },
+        { title: "Suggestions", items: feedback.suggestions.slice(0, 2) },
+      ];
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 pb-16">
@@ -51,8 +73,8 @@ export default function FeedbackPage() {
             Performance pulse
           </h1>
           <p className="max-w-xl text-muted-foreground">
-            Composite score {feedback.score}/100 · synthesized from your latest
-            transcript window.
+            Composite score {feedback.score}/100
+            {isFull ? " · synthesized from your full transcript." : " · free-tier summary — upgrade for deeper breakdowns."}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end md:w-auto">
@@ -103,26 +125,44 @@ export default function FeedbackPage() {
           score={feedback.communicationScore}
           delay={0}
         />
-        <ScoreCard
-          label="Confidence"
-          score={feedback.confidenceScore}
-          delay={0.08}
-        />
-        <ScoreCard
-          label="Technical"
-          score={feedback.technicalScore}
-          delay={0.16}
-        />
+        {isFull ? (
+          <>
+            <ScoreCard
+              label="Confidence"
+              score={feedback.confidenceScore}
+              delay={0.08}
+            />
+            <ScoreCard
+              label="Technical"
+              score={feedback.technicalScore}
+              delay={0.16}
+            />
+          </>
+        ) : (
+          <div className="rounded-xl border border-white/10 bg-muted/20 p-6 md:col-span-2">
+            <p className="text-sm font-medium text-foreground">Overall pulse</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Detailed confidence and technical splits unlock on Premium alongside advanced analytics.
+            </p>
+          </div>
+        )}
       </div>
 
-      <FeedbackPerformanceCharts
-        score={feedback.score}
-        communicationScore={feedback.communicationScore}
-        confidenceScore={feedback.confidenceScore}
-        technicalScore={feedback.technicalScore}
-      />
+      {isFull ? (
+        <FeedbackPerformanceCharts
+          score={feedback.score}
+          communicationScore={feedback.communicationScore}
+          confidenceScore={feedback.confidenceScore}
+          technicalScore={feedback.technicalScore}
+        />
+      ) : null}
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div
+        className={cn(
+          "grid gap-6",
+          isFull ? "md:grid-cols-3" : "md:grid-cols-2",
+        )}
+      >
         {sections.map((block, idx) => (
           <motion.div
             key={block.title}
@@ -133,9 +173,7 @@ export default function FeedbackPage() {
             <HmCard className="h-full gap-4 p-5">
               <CardHeader className="p-0">
                 <CardTitle className="text-base">{block.title}</CardTitle>
-                <CardDescription>
-                  Generated {feedback.mock ? "locally (mock)" : "via backend"}.
-                </CardDescription>
+                <CardDescription>{feedbackSourceNote}</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <ul className="space-y-2 text-sm text-muted-foreground">

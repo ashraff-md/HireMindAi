@@ -13,6 +13,26 @@ import {
 } from "@/lib/mock-api";
 import { useAuthStore } from "@/stores/auth-store";
 
+class ApiHttpError extends Error {
+  readonly status: number;
+  readonly hint?: string;
+
+  constructor(message: string, status: number, hint?: string) {
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
+    this.hint = hint;
+  }
+}
+
+function isHttpServerError(e: unknown): e is ApiHttpError {
+  return e instanceof ApiHttpError && e.status >= 500;
+}
+
+function getApiErrorHint(e: unknown): string | undefined {
+  return isHttpServerError(e) ? e.hint : undefined;
+}
+
 function forceMock(): boolean {
   const v = process.env.NEXT_PUBLIC_FORCE_MOCK_API?.toLowerCase();
   return v === "true" || v === "1";
@@ -40,7 +60,20 @@ async function postJson<T>(
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${errBody || res.statusText}`);
+    let hint: string | undefined;
+    try {
+      const j = JSON.parse(errBody) as { hint?: string };
+      if (typeof j.hint === "string" && j.hint.trim()) {
+        hint = j.hint.trim();
+      }
+    } catch {
+      /* plain text body */
+    }
+    throw new ApiHttpError(
+      `API ${res.status}: ${errBody || res.statusText}`,
+      res.status,
+      hint,
+    );
   }
 
   const data = (await res.json()) as T;
@@ -51,10 +84,10 @@ export async function startInterviewApi(args: {
   role: string;
   mode: InterviewMode;
   userId: string | null;
+  personalityId?: string | null;
 }): Promise<StartInterviewResponse> {
   if (forceMock() || !args.userId) {
-    const m = await mockStartInterview({ role: args.role, mode: args.mode });
-    return m;
+    return mockStartInterview({ role: args.role, mode: args.mode });
   }
 
   try {
@@ -64,11 +97,24 @@ export async function startInterviewApi(args: {
         userId: args.userId,
         role: args.role,
         mode: args.mode,
+        personalityId: args.personalityId?.trim() || undefined,
       },
     );
-    return { ...data, mock };
-  } catch {
-    return mockStartInterview({ role: args.role, mode: args.mode });
+    return {
+      ...data,
+      mock,
+      voiceFallback: data.voiceFallback,
+    };
+  } catch (e) {
+    const m = await mockStartInterview({ role: args.role, mode: args.mode });
+    if (isHttpServerError(e)) {
+      return {
+        ...m,
+        serverError: true,
+        serverHint: getApiErrorHint(e),
+      };
+    }
+    return { ...m, clientFallback: true };
   }
 }
 
@@ -92,12 +138,24 @@ export async function respondInterviewApi(args: {
         answer: args.answer,
       },
     );
-    return { ...data, mock };
-  } catch {
-    return mockSendAnswer({
+    return {
+      ...data,
+      mock,
+      voiceFallback: data.voiceFallback,
+    };
+  } catch (e) {
+    const m = await mockSendAnswer({
       interviewId: args.interviewId,
       answer: args.answer,
     });
+    if (isHttpServerError(e)) {
+      return {
+        ...m,
+        serverError: true,
+        serverHint: getApiErrorHint(e),
+      };
+    }
+    return { ...m, clientFallback: true };
   }
 }
 
@@ -117,8 +175,16 @@ export async function feedbackInterviewApi(args: {
       },
     );
     return { ...data, mock };
-  } catch {
-    return mockGetFeedback({ interviewId: args.interviewId });
+  } catch (e) {
+    const m = await mockGetFeedback({ interviewId: args.interviewId });
+    if (isHttpServerError(e)) {
+      return {
+        ...m,
+        serverError: true,
+        serverHint: getApiErrorHint(e),
+      };
+    }
+    return { ...m, clientFallback: true };
   }
 }
 
