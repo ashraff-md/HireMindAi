@@ -2,7 +2,9 @@
 -- HireMind AI — apply ALL database migrations in one run
 -- ----------------------------------------------------------------------------
 -- Use when your Supabase project has never had migrations applied (REST 404 on
--- /rest/v1/users, or interview /start returns 500).
+-- /rest/v1/users, or interview /start fails). Prefer BUNDLE_all_migrations.sql
+-- for production parity; use MINIMAL_interview_only.sql if the bundle errors
+-- on storage or PayHere objects.
 --
 -- In Supabase: Dashboard → SQL Editor → New query → paste this entire file → Run.
 -- Safe to re-run for most statements (IF NOT EXISTS / DROP IF EXISTS where needed).

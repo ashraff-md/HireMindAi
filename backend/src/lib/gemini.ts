@@ -41,7 +41,8 @@ export function getGeminiClient(): GoogleGenerativeAI {
 }
 
 function geminiModelId(): string {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  // 1.5-flash often has more generous free-tier limits than 2.0-flash; override with GEMINI_MODEL.
+  return process.env.GEMINI_MODEL?.trim() || "gemini-1.5-flash";
 }
 
 function jsonOnlyInstruction() {

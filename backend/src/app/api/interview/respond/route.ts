@@ -1,6 +1,11 @@
 import { hiremindJson } from "@/lib/hiremind-response";
+import { geminiQuotaErrorResponse } from "@/lib/interview-api-errors";
 import { InterviewRespondSchema } from "@/lib/schemas";
 import { shouldUseMockAi } from "@/lib/mock";
+import {
+  interviewFailureHint,
+  interviewStartErrorResponse,
+} from "@/lib/supabase-errors";
 import { respondInterviewOrchestration } from "@/services/interview.service";
 
 export const runtime = "nodejs";
@@ -44,6 +49,21 @@ export async function POST(request: Request) {
 
     console.error(err);
 
-    return hiremindJson({ error: "interview_respond_failed" }, { status: 500 });
+    const schema = interviewStartErrorResponse(err);
+    if (schema) {
+      return hiremindJson(schema.body, { status: schema.status });
+    }
+    const quota = geminiQuotaErrorResponse(err);
+    if (quota) {
+      return hiremindJson(quota.body, { status: quota.status });
+    }
+    const hint = interviewFailureHint(err);
+    return hiremindJson(
+      {
+        error: "interview_respond_failed",
+        ...(hint ? { hint } : {}),
+      },
+      { status: 500 },
+    );
   }
 }

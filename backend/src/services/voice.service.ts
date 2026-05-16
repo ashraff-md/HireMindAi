@@ -17,28 +17,40 @@ export async function synthesizeInterviewVoice(args: {
   }
 
   const supabase = getSupabaseAdmin();
-  const mp3 = await elevenLabsSpeakToMp3(args.question);
 
-  const objectPath = `${args.interviewId}/${randomUUID()}.mp3`;
-  const { error: uploadError } = await supabase.storage
-    .from("interview-audio")
-    .upload(objectPath, mp3, {
-      contentType: "audio/mpeg",
-      upsert: false,
-      cacheControl: "3600",
-    });
+  try {
+    const mp3 = await elevenLabsSpeakToMp3(args.question);
 
-  if (uploadError) {
-    throw uploadError;
+    const objectPath = `${args.interviewId}/${randomUUID()}.mp3`;
+    const { error: uploadError } = await supabase.storage
+      .from("interview-audio")
+      .upload(objectPath, mp3, {
+        contentType: "audio/mpeg",
+        upsert: false,
+        cacheControl: "3600",
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data, error } = await supabase.storage
+      .from("interview-audio")
+      .createSignedUrl(objectPath, 60 * 60);
+
+    if (error || !data?.signedUrl) {
+      throw error ?? new Error("Failed to generate signed URL.");
+    }
+
+    return { audioUrl: data.signedUrl, usedVoiceMock: false };
+  } catch (err) {
+    console.warn(
+      "[voice] ElevenLabs or storage failed; using placeholder audio.",
+      err instanceof Error ? err.message : err,
+    );
+    const base = process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+    const path = MOCK_AUDIO_PATH;
+    const url = base ? `${base}${path}` : path;
+    return { audioUrl: url, usedVoiceMock: true };
   }
-
-  const { data, error } = await supabase.storage
-    .from("interview-audio")
-    .createSignedUrl(objectPath, 60 * 60);
-
-  if (error || !data?.signedUrl) {
-    throw error ?? new Error("Failed to generate signed URL.");
-  }
-
-  return { audioUrl: data.signedUrl, usedVoiceMock: false };
 }
