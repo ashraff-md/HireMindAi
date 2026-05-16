@@ -3,7 +3,10 @@
 import type { SVGProps } from "react";
 
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  createSupabaseBrowserClient,
+  isSupabaseBrowserConfigured,
+} from "@/lib/supabase/client";
 
 function GoogleGlyph(props: SVGProps<SVGSVGElement>) {
   return (
@@ -65,10 +68,7 @@ async function signIn(provider: "google" | "github" | "linkedin_oidc") {
 }
 
 export function OAuthButtonsRow({ disabled }: { disabled?: boolean }) {
-  const configured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  const configured = isSupabaseBrowserConfigured();
   const blocked = disabled || !configured;
   const configureHint = !configured ? "Configure OAuth in Supabase" : undefined;
 

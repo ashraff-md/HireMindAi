@@ -1,36 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { HmCard } from "@/components/hm-card";
 import { OAuthButtonsRow } from "@/components/oauth-buttons";
 import { Button } from "@/components/ui/button";
-import {
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  createSupabaseBrowserClient,
+  isSupabaseBrowserConfigured,
+} from "@/lib/supabase/client";
+import { sanitizeInternalReturnPath } from "@/lib/sanitize-internal-path";
 import { useAuthStore } from "@/stores/auth-store";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const supabaseConfigured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  const rawNext = searchParams.get("next");
+  const returnPath = sanitizeInternalReturnPath(rawNext) ?? "/dashboard";
+  const supabaseConfigured = isSupabaseBrowserConfigured();
+  const safeNextLogin = sanitizeInternalReturnPath(rawNext);
+  const loginHref = safeNextLogin
+    ? `/login?next=${encodeURIComponent(safeNextLogin)}`
+    : "/login";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,7 +64,7 @@ export default function RegisterPage() {
         data.session.user.email ?? null,
       );
       useAuthStore.getState().setAuthReady(true);
-      router.push("/dashboard");
+      router.push(returnPath);
       router.refresh();
       return;
     }
@@ -74,20 +77,22 @@ export default function RegisterPage() {
   return (
     <div className="mx-auto w-full max-w-md">
       <HmCard className="gap-6 p-6">
-        <CardHeader>
-          <CardTitle>Create account</CardTitle>
-          <CardDescription>
-            Signing up provisions a real <code className="text-xs">user id</code>{" "}
-            for live interview APIs (see database trigger on{" "}
-            <code className="text-xs">public.users</code>).
-          </CardDescription>
+        <CardHeader className="justify-items-center pb-1 text-center">
+          <CardTitle className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+            Create account
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {!supabaseConfigured ? (
-            <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-              Configure Supabase keys in{" "}
-              <code className="text-xs">frontend/.env.local</code> before
-              registering.
+            <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-50">
+              Add <code className="text-xs">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+              <code className="text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> (or{" "}
+              <code className="text-xs">NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>
+              ) to <code className="text-xs">frontend/.env.local</code>, or{" "}
+              <Link href="/interview/setup" className="font-medium underline-offset-4 hover:underline">
+                continue as a guest → interview setup
+              </Link>
+              .
             </p>
           ) : null}
           <OAuthButtonsRow disabled={loading} />
@@ -138,12 +143,33 @@ export default function RegisterPage() {
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+            <Link href={loginHref} className="text-primary underline-offset-4 hover:underline">
               Sign in
             </Link>
           </p>
         </CardContent>
       </HmCard>
     </div>
+  );
+}
+
+function RegisterLoading() {
+  return (
+    <div className="mx-auto w-full max-w-md animate-pulse">
+      <HmCard className="gap-6 p-6">
+        <CardHeader className="justify-items-center pb-4 text-center">
+          <CardTitle className="font-display text-2xl">Create account</CardTitle>
+        </CardHeader>
+        <CardContent className="min-h-[200px]" />
+      </HmCard>
+    </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<RegisterLoading />}>
+      <RegisterForm />
+    </Suspense>
   );
 }

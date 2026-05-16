@@ -34,7 +34,7 @@ export function VoiceChatBubble({
         )}
       >
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {ai ? "AI recruiter" : "You"}
+          {ai ? "HireMind AI" : "You"}
         </div>
         <p className="whitespace-pre-wrap">{text}</p>
       </div>

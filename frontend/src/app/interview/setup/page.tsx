@@ -3,43 +3,81 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Briefcase, Play, Search, Smile, Zap } from "lucide-react";
+import { useMemo, useState } from "react";
 
-import { HmCard } from "@/components/hm-card";
-import { RecruiterAvatar } from "@/components/recruiter-avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   DIFFICULTIES,
   INTERVIEW_PERSONALITIES,
   JOB_ROLES,
+  PRESET_JOB_CHIPS,
   difficultyById,
   personalityById,
+  type PersonalityId,
 } from "@/lib/interview-options";
 import { cn } from "@/lib/utils";
 import { useInterviewStore } from "@/stores/interview-store";
+
+const PERSONA_ICONS = {
+  corporate_hr: Briefcase,
+  friendly: Smile,
+  stress: Zap,
+} satisfies Record<PersonalityId, typeof Briefcase>;
+
+function MiniStatBar({
+  label,
+  valuePct,
+}: {
+  label: string;
+  valuePct: number;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <span>{label}</span>
+        <span className="tabular-nums text-foreground">{valuePct}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-black/55 dark:bg-white/12">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[var(--hm-neon-from)] to-purple-600"
+          style={{ width: `${Math.min(100, valuePct)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function InterviewSetupPage() {
   const router = useRouter();
   const resetSession = useInterviewStore((s) => s.resetSession);
   const setMeta = useInterviewStore((s) => s.setMeta);
 
-  const [role, setRole] = useState<string>(JOB_ROLES[0] ?? "Software Engineer");
-  const [personalityId, setPersonalityId] = useState<string>(
+  const defaultRole =
+    JOB_ROLES.find((r) => r === "Product Manager") ?? JOB_ROLES[0] ?? "Product Manager";
+
+  const [role, setRole] = useState(defaultRole);
+  const [personalityId, setPersonalityId] = useState<PersonalityId>(
     INTERVIEW_PERSONALITIES[0]?.id ?? "corporate_hr",
   );
   const [difficultyId, setDifficultyId] = useState<string>(
-    DIFFICULTIES[1]?.id ?? "mid",
+    DIFFICULTIES.find((d) => d.id === "mid")?.id ?? "mid",
   );
 
   const personality = personalityById(personalityId);
   const difficulty = difficultyById(difficultyId);
+
+  const formattedDate = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      }).format(new Date()),
+    [],
+  );
 
   function handleStart() {
     resetSession();
@@ -60,131 +98,242 @@ export default function InterviewSetupPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 pb-16">
-      <div>
+    <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 pb-20 md:gap-14">
+      <div className="pointer-events-none absolute inset-0 -z-[1] -mx-4 hidden rounded-[2rem] bg-gradient-to-br from-violet-200/65 via-transparent to-sky-200/65 opacity-[0.75] blur-px dark:hidden md:block" />
+
+      {/* Header */}
+      <div className="space-y-4 text-center md:text-left">
         <Link
           href="/dashboard"
-          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          className="inline-flex text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
           ← Back to dashboard
         </Link>
-        <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight md:text-[2.75rem]">
-          Mission briefing
-        </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground md:text-lg">
-          Configure persona pressure, difficulty calibration, and role targeting — we mirror this stack inside the cinematic bridge.
-        </p>
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+            HireMind Simulator ·{" "}
+            <span className="text-[var(--hm-neon-from)]">{formattedDate}</span>
+          </p>
+          <h1 className="font-display text-4xl font-semibold tracking-tight text-balance md:text-[2.65rem]">
+            Configure Your Simulation
+          </h1>
+          <p className="mx-auto max-w-3xl text-base text-muted-foreground md:mx-0 md:text-[17px]">
+            Fine-tune the HireMind AI parameters for your upcoming technical evaluation — role fit,
+            challenge curve, and evaluator tone all sync downstream.
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] lg:items-start">
-        <div className="space-y-8">
-          <HmCard className="gap-6 p-6 md:p-8">
-            <CardHeader className="p-0">
-              <CardTitle className="font-display text-xl">Target role</CardTitle>
-              <CardDescription>Select the lane interview probes optimize toward.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 p-0">
-              <Label htmlFor="role">Job role</Label>
-              <select
-                id="role"
-                className={cn(
-                  "flex h-10 w-full rounded-xl border border-input bg-background/70 px-3 text-sm outline-none backdrop-blur-md focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 dark:bg-background/35",
-                )}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.06fr)_minmax(340px,0.94fr)] lg:items-start lg:gap-10">
+        {/* Left controls */}
+        <div className="order-2 space-y-8 lg:order-1">
+          {/* Target role */}
+          <section className="rounded-[1.65rem] border border-white/65 bg-background/88 p-7 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-card/72 md:p-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight">Target job role</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Search presets or steer the simulation toward a narrower lane label.
+            </p>
+            <div className="relative mt-5">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 opacity-48"
+                aria-hidden
+              />
+              <Input
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-              >
-                {JOB_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </CardContent>
-          </HmCard>
+                placeholder="e.g. Senior Software Engineer"
+                className={cn(
+                  "h-12 rounded-xl border-border/85 bg-muted/55 pl-10 text-[15px] shadow-inner",
+                  "focus-visible:bg-background md:text-[15px]",
+                )}
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              {PRESET_JOB_CHIPS.map((chip) => {
+                const picked = chip === role;
+                return (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setRole(chip)}
+                    className={cn(
+                      "rounded-full border px-5 py-2 text-sm font-semibold tracking-tight transition-colors",
+                      picked
+                        ? "border-purple-950/95 bg-purple-950 text-white shadow-md shadow-purple-900/35 dark:border-primary/65 dark:bg-primary/92 dark:text-primary-foreground"
+                        : "border-border/90 bg-muted/45 text-muted-foreground hover:bg-muted hover:text-foreground dark:border-white/12 dark:bg-transparent",
+                    )}
+                  >
+                    {chip}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
-          <HmCard className="gap-6 p-6 md:p-8">
-            <CardHeader className="p-0">
-              <CardTitle className="font-display text-xl">Interviewer personality</CardTitle>
-              <CardDescription>Maps directly into recruiter avatar + tone scaffolding.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 p-0 sm:grid-cols-2">
-              {INTERVIEW_PERSONALITIES.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPersonalityId(p.id)}
-                  className={cn(
-                    buttonVariants({
-                      variant: personalityId === p.id ? "default" : "outline",
-                    }),
-                    "h-auto flex-col items-start gap-2 whitespace-normal px-4 py-4 text-left text-sm font-normal",
-                  )}
-                >
-                  <span className="font-display font-semibold">{p.label}</span>
-                  <span className="text-xs text-muted-foreground">{p.tone}</span>
-                </button>
-              ))}
-            </CardContent>
-          </HmCard>
+          {/* Complexity */}
+          <section className="rounded-[1.65rem] border border-white/65 bg-background/88 p-7 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-card/72 md:p-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight">Complexity level</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Calibrated depth ladders — juniors get scaffolding, exec loops see ambiguity.
+            </p>
+            <div className="mt-6 rounded-2xl border border-border/80 bg-muted/45 p-1.5 shadow-inner dark:border-white/12 dark:bg-black/42">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {DIFFICULTIES.map((d) => {
+                  const picked = difficultyId === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setDifficultyId(d.id)}
+                      title={d.hint}
+                      className={cn(
+                        "rounded-xl px-3 py-3 text-center text-[13px] font-semibold transition-all",
+                        picked
+                          ? "border border-purple-950/82 bg-purple-950 text-white shadow-inner dark:border-[var(--hm-neon-from)]/72 dark:bg-primary/92 dark:text-primary-foreground"
+                          : "border border-transparent bg-transparent text-muted-foreground hover:bg-black/65 hover:text-white dark:hover:bg-white/13 dark:hover:text-foreground",
+                      )}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
 
-          <HmCard className="gap-6 p-6 md:p-8">
-            <CardHeader className="p-0">
-              <CardTitle className="font-display text-xl">Difficulty spectrum</CardTitle>
-              <CardDescription>Calibrate behavioral vs technical altitude.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3 p-0">
-              {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => setDifficultyId(d.id)}
-                  className={cn(
-                    buttonVariants({
-                      variant: difficultyId === d.id ? "secondary" : "outline",
-                      size: "sm",
-                    }),
-                    "rounded-full px-5 py-2 text-xs uppercase tracking-[0.14em]",
-                  )}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </CardContent>
-          </HmCard>
+          {/* AI Personality */}
+          <section className="rounded-[1.65rem] border border-white/65 bg-background/88 p-7 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-card/72 md:p-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight">AI personality</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Vocal tone, empathy balance, and how tightly feedback lands.
+            </p>
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              {INTERVIEW_PERSONALITIES.map((p) => {
+                const Icon = PERSONA_ICONS[p.id];
+                const picked = personalityId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPersonalityId(p.id)}
+                    className={cn(
+                      "flex flex-col gap-4 rounded-[1.25rem] border p-6 text-left transition-all",
+                      picked
+                        ? "border-[var(--hm-neon-from)]/92 bg-purple-950/90 text-white shadow-lg shadow-purple-950/52 dark:bg-primary/[0.82] dark:shadow-purple-950/45"
+                        : "border-border/75 bg-muted/48 hover:bg-muted hover:shadow-sm dark:border-white/13 dark:bg-black/52 dark:hover:bg-white/10",
+                      !picked ? "text-foreground" : "",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-12 shrink-0 items-center justify-center rounded-xl border text-lg",
+                        picked
+                          ? "border-white/30 bg-black/42 text-white shadow-inner"
+                          : "border-purple-950/42 bg-purple-950/14 text-purple-950 dark:border-white/20 dark:bg-white/22 dark:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-[22px]" aria-hidden strokeWidth={1.95} />
+                    </div>
+                    <div>
+                      <p className={cn("font-display text-[17px] font-semibold", picked && "text-white")}>{p.label}</p>
+                      <p
+                        className={cn(
+                          "mt-2 text-[13px] leading-snug opacity-94",
+                          picked ? "text-white/78" : "text-muted-foreground",
+                        )}
+                      >
+                        {p.tone}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
           <Button
             type="button"
             size="lg"
-            className="w-full rounded-2xl text-base shadow-[0_0_48px_-18px_var(--hm-glow-mid)] md:w-auto md:min-w-[280px]"
+            variant="outline"
+            className="w-full rounded-2xl border-dashed border-primary/52 py-6 text-base lg:hidden"
             onClick={handleStart}
           >
-            Start interview
+            <Play className="mr-2 size-4 fill-current" aria-hidden />
+            Start Interview
           </Button>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
+        {/* Preview */}
+        <motion.aside
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="lg:sticky lg:top-28"
+          className="order-1 lg:sticky lg:top-28 lg:self-start lg:order-2"
         >
-          <HmCard className="gap-6 overflow-hidden border-[var(--hm-neon-from)]/35 bg-black/35 p-8 backdrop-blur-2xl dark:bg-black/55 hm-panel-glow">
-            <CardHeader className="p-0 text-center">
-              <CardTitle className="font-display text-xl">Recruiter preview</CardTitle>
-              <CardDescription>Orb reacts inside the live spectral hall.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center gap-5 p-0">
-              <RecruiterAvatar
-                label={personality.label}
-                subtitle={`${difficulty.label} · ${role}`}
-                speaking={false}
+          <div className="rounded-[1.85rem] border border-[var(--hm-neon-from)]/52 bg-black/94 p-8 text-white shadow-[0_50px_100px_-50px_oklch(0.4_0.22_286/0.9)] hm-panel-glow dark:border-white/12 dark:bg-gradient-to-br dark:from-slate-950 dark:to-black">
+            <div className="flex items-center justify-between gap-4">
+              <Badge
+                variant="secondary"
+                className="rounded-full border border-emerald-500/62 bg-black/92 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200"
+              >
+                <span className="mr-2 inline-block size-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_theme(colors.emerald.400)]" />
+                SYSTEM READY
+              </Badge>
+              <span className="text-[11px] font-medium uppercase tracking-[0.26em] text-white/62">
+                Recruiter
+              </span>
+            </div>
+
+            <div className="relative mt-7 overflow-hidden rounded-2xl border border-white/12 bg-gradient-to-br from-purple-950/95 via-violet-950 to-slate-950 shadow-inner">
+              <div
+                className="hm-noise pointer-events-none absolute inset-0 opacity-40 mix-blend-overlay"
+                aria-hidden
               />
-              <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                {personality.tone}
+              <div
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_40%_-10%,rgba(251,238,255,0.5),transparent_62%),radial-gradient(circle_at_90%_100%,rgba(99,124,247,0.35),transparent_48%)]"
+                aria-hidden
+              />
+              <div className="relative flex aspect-[4/5] flex-col justify-end pb-12 pt-[38%]">
+                <span
+                  className="relative z-[1] px-12 text-center font-display text-[2.95rem] font-semibold capitalize tracking-[0.12em]"
+                  aria-hidden
+                >
+                  <span className="bg-gradient-to-br from-white to-white/76 bg-clip-text text-transparent drop-shadow-[0_12px_36px_rgb(147,114,246)]">
+                    {personality.previewName}
+                  </span>
+                </span>
+                <span className="relative z-[1] mt-1 text-center text-[11px] font-semibold uppercase tracking-[0.36em] text-white/74">
+                  {personality.previewSubtitle}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-5">
+              <MiniStatBar label="Empathy" valuePct={personality.empathyPct} />
+              <MiniStatBar label="Technicality" valuePct={personality.technicalPct} />
+            </div>
+
+            <div className="mt-10 space-y-2">
+              <p className="text-center text-[11px] uppercase tracking-[0.22em] text-white/72">
+                {difficulty.label} · {role}
               </p>
-            </CardContent>
-          </HmCard>
-        </motion.div>
+              <button
+                type="button"
+                onClick={() => handleStart()}
+                className={cn(
+                  buttonVariants({ size: "lg" }),
+                  "min-h-14 w-full gap-3 rounded-xl border-0 bg-gradient-to-r from-[#e9d5ff] via-[#d8b4fe] to-[#a855f7] py-7 font-display text-base font-semibold text-[#0b0414] shadow-[0_36px_60px_-32px_rgb(148,118,237)] hover:opacity-[0.94]",
+                )}
+              >
+                <Play className="size-6 fill-purple-950 text-purple-950" aria-hidden />
+                Start Interview
+              </button>
+              <p className="text-center text-[11px] text-white/60">
+                Your choices sync instantly with the waveform bridge.
+              </p>
+            </div>
+          </div>
+        </motion.aside>
       </div>
     </div>
   );

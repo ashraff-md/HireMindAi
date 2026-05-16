@@ -28,7 +28,7 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/dashboard#analytics" className="hover:text-foreground">
+              <Link href="/analytics" className="hover:text-foreground">
                 Analytics
               </Link>
             </li>

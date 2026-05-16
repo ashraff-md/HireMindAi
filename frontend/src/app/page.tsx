@@ -150,6 +150,12 @@ export default function LandingPage() {
             >
               Upgrade to Premium
             </Link>
+            <Link
+              href="/interview/setup"
+              className="w-full rounded-2xl border border-white/10 bg-transparent py-3 text-center text-sm font-semibold tracking-tight text-muted-foreground transition-colors hover:border-white/25 hover:text-foreground sm:w-auto sm:min-w-[200px] sm:px-8"
+            >
+              Continue as guest
+            </Link>
           </motion.div>
         </div>
 

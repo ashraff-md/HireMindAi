@@ -30,5 +30,10 @@ export function AppChrome({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <div className="flex min-h-screen flex-col">
+      <AppShell>{children}</AppShell>
+      <SiteFooter />
+    </div>
+  );
 }
