@@ -173,15 +173,11 @@ Do NOT over-engineer.
 
 # API Integration (Mock First)
 
-Create a folder:
+Create mock helpers under:
 
-/lib/mockApi.ts
+`/frontend/src/lib/mock-api.ts`
 
-Include:
-
-* startInterview()
-* sendAnswer()
-* getFeedback()
+Exported helpers (`mockStartInterview`, etc.) power guest demos; `interview-api.ts` consumes them.
 
 Return fake JSON responses so UI is fully testable.
 

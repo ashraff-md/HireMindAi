@@ -1,6 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# ── Dependencies ───────────────────────────────────────────────────────────────
 node_modules/
 .pnp.*
 .yarn/*
@@ -9,44 +9,49 @@ node_modules/
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# ── Testing ───────────────────────────────────────────────────────────────────
 coverage/
 
-# next.js (root + workspaces)
+# ── Next.js (workspace packages) ─────────────────────────────────────────────
 **/.next/
 **/out/
 
-# production
+# ── Production bundles ─────────────────────────────────────────────────────────
 build/
 dist/
 
-# misc
-.DS_Store
-*.pem
-Thumbs.db
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files — keep examples tracked
+# ── Environment & secrets ──────────────────────────────────────────────────────
 .env*
 !.env.example
 !**/.env.example
 
-# vercel
-.vercel
-**/.vercel
+# ── Vercel ─────────────────────────────────────────────────────────────────────
+.vercel/
+**/.vercel/
 
-# typescript
+# ── TypeScript / tooling caches ────────────────────────────────────────────────
 *.tsbuildinfo
 **/next-env.d.ts
+.turbo/
+.eslintcache
+.prettiercache
 
-# Supabase CLI local state
+# ── Logs ───────────────────────────────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# ── Supabase CLI local state ───────────────────────────────────────────────────
 supabase/.branches/
 supabase/.temp/
 
-# IDE (optional noise)
+# ── Misc ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.pem
+
+# ── IDE (optional noise) ────────────────────────────────────────────────────────
 .idea/
