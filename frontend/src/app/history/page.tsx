@@ -2,27 +2,18 @@
 
 import Link from "next/link";
 import { Building2, History, Mic2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { LockedFeatureBadge } from "@/components/locked-feature-badge";
-
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  fetchMyInterviewsWithFeedback,
+  formatInterviewHistoryDate,
+  type InterviewHistoryEntry,
+} from "@/lib/interview-history";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
-
-export type InterviewHistoryRow = {
-  id: string;
-  roleTitle: string;
-  interviewType: string;
-  startedAt: string;
-  durationLabel: string;
-  outcomeLabel?: string | null;
-};
-
-/** Replace with Supabase/API when interview runs are persisted. */
-function getInterviewHistory(): InterviewHistoryRow[] {
-  return [];
-}
 
 function formatHeadingDate(d: Date) {
   return new Intl.DateTimeFormat(undefined, {
@@ -33,11 +24,48 @@ function formatHeadingDate(d: Date) {
   }).format(d);
 }
 
+function outcomeLabel(entry: InterviewHistoryEntry): string | null {
+  if (entry.feedback) {
+    const a = entry.feedback;
+    const avg = Math.round(
+      (Number(a.communication_score) +
+        Number(a.technical_score) +
+        Number(a.confidence_score)) /
+        3,
+    );
+    return `Avg ${avg}`;
+  }
+  if (entry.score != null && Number.isFinite(Number(entry.score))) {
+    return `Score ${Math.round(Number(entry.score))}`;
+  }
+  return "In progress";
+}
+
 export default function InterviewHistoryPage() {
-  const rows = getInterviewHistory();
+  const authReady = useAuthStore((s) => s.authReady);
+  const premium = useAuthStore((s) => s.plan) === "premium";
+  const [rows, setRows] = useState<InterviewHistoryEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!premium) {
+      setRows([]);
+      setLoaded(true);
+      return;
+    }
+    const data = await fetchMyInterviewsWithFeedback();
+    setRows(data);
+    setLoaded(true);
+  }, [premium]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const t = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(t);
+  }, [authReady, load]);
+
   const hasRows = rows.length > 0;
   const today = formatHeadingDate(new Date());
-  const premium = useAuthStore((s) => s.plan) === "premium";
 
   return (
     <div className="relative mx-auto w-full max-w-6xl space-y-10 pb-12 md:space-y-12 md:pb-16">
@@ -60,17 +88,21 @@ export default function InterviewHistoryPage() {
               >
                 Log
               </Badge>
-              <span className="text-xs font-semibold capitalize tracking-[0.12em] text-muted-foreground">{today}</span>
+              <span className="text-xs font-semibold capitalize tracking-[0.12em] text-muted-foreground">
+                {today}
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl border border-sidebar-border bg-sidebar-accent/50 text-primary">
                 <History className="size-7" aria-hidden strokeWidth={1.75} />
               </div>
               <div>
-                <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Interview history</h1>
+                <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">
+                  Interview history
+                </h1>
                 <p className="mt-2 max-w-[42rem] text-sm text-muted-foreground md:text-base">
-                  Completed and in-progress rehearsals stay in one place. Open a row for details once replay and exports
-                  are available.
+                  Completed sessions with feedback and your Premium mic recording open from each
+                  debrief.
                 </p>
               </div>
             </div>
@@ -93,15 +125,7 @@ export default function InterviewHistoryPage() {
         </div>
       </div>
 
-      {hasRows ? (
-        <div className="-mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          <span>All sessions</span>
-          <span className="text-border">·</span>
-          <span className="text-muted-foreground/70">Newest first</span>
-        </div>
-      ) : null}
-
-      {!hasRows ? (
+      {!premium ? (
         <div className="rounded-2xl border border-dashed border-border/90 bg-muted/15 px-6 py-20 text-center md:py-24">
           <div
             aria-hidden
@@ -109,22 +133,49 @@ export default function InterviewHistoryPage() {
           >
             <Building2 className="size-9 opacity-80" />
           </div>
-          <p className="font-display text-xl font-semibold tracking-tight text-foreground md:text-2xl">No sessions yet</p>
-          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            {premium
-              ? "Nothing in your history yet — complete an interview with feedback to see it listed here."
-              : "Session history and progress tracking are a Premium perk — start practicing now, then upgrade to review past runs side by side."}
+          <p className="font-display text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+            Premium history
           </p>
-          {!premium ? (
-            <div className="mt-6 flex justify-center">
-              <LockedFeatureBadge />
-            </div>
-          ) : null}
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+            Session history, recordings, and saved debriefs unlock with Premium.
+          </p>
+          <div className="mt-6 flex justify-center">
+            <LockedFeatureBadge />
+          </div>
           <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link href="/upgrade" className={cn(buttonVariants(), "rounded-xl")}>
+              Upgrade
+            </Link>
             <Link
-              href="/interview/setup"
-              className={cn(buttonVariants(), "rounded-xl")}
+              href="/dashboard"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "text-muted-foreground hover:text-foreground",
+              )}
             >
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+      ) : !loaded ? (
+        <p className="text-center text-muted-foreground">Loading history…</p>
+      ) : !hasRows ? (
+        <div className="rounded-2xl border border-dashed border-border/90 bg-muted/15 px-6 py-20 text-center md:py-24">
+          <div
+            aria-hidden
+            className="mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl bg-muted/80 text-muted-foreground"
+          >
+            <Building2 className="size-9 opacity-80" />
+          </div>
+          <p className="font-display text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+            No sessions yet
+          </p>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+            Complete an interview with feedback to see it listed here. Premium saves your mic audio
+            on the HireMind backend for recap from each debrief.
+          </p>
+          <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link href="/interview/setup" className={cn(buttonVariants(), "rounded-xl")}>
               Go to interview setup
             </Link>
             <Link
@@ -152,24 +203,39 @@ export default function InterviewHistoryPage() {
                 className="grid gap-4 px-5 py-5 transition-colors hover:bg-muted/30 md:grid-cols-[1fr_auto] md:items-center md:px-6"
               >
                 <div className="min-w-0">
-                  <p className="font-display text-[17px] font-semibold leading-snug text-foreground">{row.roleTitle}</p>
+                  <p className="font-display text-[17px] font-semibold leading-snug text-foreground">
+                    {row.role}
+                  </p>
                   <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                    <span>{row.interviewType}</span>
+                    <span className="capitalize">{row.mode}</span>
                     <span aria-hidden>·</span>
-                    <time dateTime={row.startedAt}>{row.startedAt}</time>
-                    <span aria-hidden>·</span>
-                    <span>{row.durationLabel}</span>
+                    <time dateTime={row.created_at}>
+                      {formatInterviewHistoryDate(row.created_at)}
+                    </time>
+                    {row.user_recording_object_path?.trim() ? (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="text-[var(--hm-neon-from)]">Recording saved</span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 md:justify-end">
-                  {row.outcomeLabel ? (
-                    <Badge variant="secondary" className="rounded-lg font-normal tabular-nums">
-                      {row.outcomeLabel}
-                    </Badge>
-                  ) : null}
-                  <Button variant="outline" size="sm" className="rounded-lg" disabled>
-                    Open details
-                  </Button>
+                <div className="flex flex-wrap items-center gap-3 md:justify-end">
+                  <Badge variant="secondary" className="rounded-lg font-normal tabular-nums">
+                    {outcomeLabel(row)}
+                  </Badge>
+                  {row.feedback ? (
+                    <Link
+                      href={`/interview/debrief/${row.id}`}
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-lg")}
+                    >
+                      Open debrief
+                    </Link>
+                  ) : (
+                    <Button variant="outline" size="sm" className="rounded-lg" disabled>
+                      Awaiting feedback
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}
@@ -179,8 +245,8 @@ export default function InterviewHistoryPage() {
 
       <p className="text-center text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
         {premium
-          ? "Interview history syncs with your account after each completed session."
-          : "Upgrade to Premium to unlock persistent interview history and trends."}
+          ? "Session list syncs from Supabase; mic recordings are stored on the API server under data/interview-recordings."
+          : "Upgrade to Premium for saved history and recordings."}
       </p>
     </div>
   );

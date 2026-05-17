@@ -18,11 +18,6 @@ export const InterviewFeedbackSchema = z.object({
   interviewId: z.string().uuid(),
 });
 
-export const PayHereInitSchema = z.object({
-  userId: z.string().uuid(),
-  email: z.string().email().optional(),
-});
-
 export const ResumeProfileSchema = z.object({
   skills: z.array(z.string()),
   education: z.array(z.string()),

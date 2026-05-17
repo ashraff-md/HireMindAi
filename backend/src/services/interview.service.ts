@@ -1,3 +1,7 @@
+import {
+  FREE_INTERVIEWS_PER_UTC_MONTH,
+  InterviewMonthlyLimitError,
+} from "@/lib/interview-quota";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   normalizePersonalityId,
@@ -18,7 +22,7 @@ import { synthesizeInterviewVoice } from "./voice.service";
  * Ensures public.users has a row for this auth user (interviews.user_id FK).
  * Missed trigger / old accounts / partial restores otherwise break interview start.
  */
-async function ensurePublicUser(userId: string): Promise<void> {
+export async function ensurePublicUser(userId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
 
   const { data: existing, error: selErr } = await supabase
@@ -140,6 +144,55 @@ async function fetchMessages(interviewId: string) {
   );
 }
 
+function utcMonthStartIso(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const mo = now.getUTCMonth();
+  return new Date(Date.UTC(y, mo, 1, 0, 0, 0, 0)).toISOString();
+}
+
+function utcNextMonthStartIso(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const mo = now.getUTCMonth();
+  return new Date(Date.UTC(y, mo + 1, 1, 0, 0, 0, 0)).toISOString();
+}
+
+export async function countUserInterviewsStartedThisUtcMonth(
+  userId: string,
+): Promise<number> {
+  const supabase = getSupabaseAdmin();
+  const start = utcMonthStartIso();
+  const end = utcNextMonthStartIso();
+
+  const { count, error } = await supabase
+    .from("interviews")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", start)
+    .lt("created_at", end);
+
+  if (error) {
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
+export async function getInterviewMonthlyUsageForUser(userId: string): Promise<{
+  plan: "free" | "premium";
+  usedThisUtcMonth: number;
+  freeMonthlyLimit: number;
+}> {
+  const plan = await resolvePlan(userId);
+  const usedThisUtcMonth = await countUserInterviewsStartedThisUtcMonth(userId);
+  return {
+    plan,
+    usedThisUtcMonth,
+    freeMonthlyLimit: FREE_INTERVIEWS_PER_UTC_MONTH,
+  };
+}
+
 async function resolvePlan(userId: string): Promise<"free" | "premium"> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -225,6 +278,13 @@ export async function startInterviewOrchestration(input: {
 
   const profileContext =
     plan === "premium" ? await fetchProfileBlurb(input.userId) : null;
+
+  if (plan === "free") {
+    const used = await countUserInterviewsStartedThisUtcMonth(input.userId);
+    if (used >= FREE_INTERVIEWS_PER_UTC_MONTH) {
+      throw new InterviewMonthlyLimitError(used, FREE_INTERVIEWS_PER_UTC_MONTH);
+    }
+  }
 
   const { data: interviewRow, error: interviewError } = await supabase
     .from("interviews")

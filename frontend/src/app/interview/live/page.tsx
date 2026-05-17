@@ -27,35 +27,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { useBrowserSpeechRecognition } from "@/hooks/use-browser-speech-recognition";
 import { useCameraPreview } from "@/hooks/use-camera-preview";
 import { useMicLevel } from "@/hooks/use-mic-level";
+import { useMicStream } from "@/hooks/use-mic-stream";
 import {
   feedbackInterviewApi,
   respondInterviewApi,
   startInterviewApi,
 } from "@/lib/interview-api";
-import { difficultyById, personalityById } from "@/lib/interview-options";
 import { displayNameFromEmail } from "@/lib/display-name";
+import { personalityById } from "@/lib/interview-options";
+import { playRecruiterQuestionAudio } from "@/lib/recruiter-voice";
+import { uploadInterviewRecordingAudio } from "@/lib/recording-api";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useInterviewStore } from "@/stores/interview-store";
 
 const MAX_SESSION_SEC = 5 * 60;
-
-async function playOptionalAudio(url: string) {
-  if (!url?.trim()) {
-    return;
-  }
-
-  try {
-    const audio = new Audio(url);
-    await audio.play().catch(() => undefined);
-    await new Promise<void>((resolve) => {
-      audio.onended = () => resolve();
-      audio.onerror = () => resolve();
-    });
-  } catch {
-    /* autoplay blocked or missing asset */
-  }
-}
 
 function formatMmSs(sec: number) {
   const m = Math.floor(sec / 60);
@@ -79,18 +66,13 @@ function LiveInterviewInner() {
   const searchParams = useSearchParams();
   const role = searchParams.get("role") ?? "Software Engineer";
   const personalityParam = searchParams.get("personality") ?? "";
-  const difficultyParam = searchParams.get("difficulty") ?? "";
 
   const personalityLabelStore = useInterviewStore((s) => s.personalityLabel);
-  const difficultyLabelStore = useInterviewStore((s) => s.difficultyLabel);
   const personalityIdStore = useInterviewStore((s) => s.personalityId);
 
   const recruiterLabel =
     personalityLabelStore.trim() ||
     (personalityParam ? personalityById(personalityParam).label : "AI Recruiter");
-  const tierLabel =
-    difficultyLabelStore.trim() ||
-    (difficultyParam ? difficultyById(difficultyParam).label : "");
 
   const authReady = useAuthStore((s) => s.authReady);
   const email = useAuthStore((s) => s.email);
@@ -123,6 +105,9 @@ function LiveInterviewInner() {
   const setClientServerError = useInterviewStore((s) => s.setClientServerError);
   const setServerErrorHint = useInterviewStore((s) => s.setServerErrorHint);
   const setFeedback = useInterviewStore((s) => s.setFeedback);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderChunksRef = useRef<BlobPart[]>([]);
 
   const [answerDraft, setAnswerDraft] = useState("");
   const [bootError, setBootError] = useState<string | null>(null);
@@ -161,7 +146,68 @@ function LiveInterviewInner() {
       },
     });
 
-  const micLevel = useMicLevel(speechListening);
+  const wantMicStream =
+    Boolean(interviewId) && phase !== "idle" && !bootError && authReady;
+  const micStream = useMicStream(wantMicStream);
+
+  const shouldRecordSession = useMemo(
+    () =>
+      plan === "premium" &&
+      Boolean(interviewId) &&
+      !backendMockBanner &&
+      !clientApiFallback &&
+      !clientServerError,
+    [plan, interviewId, backendMockBanner, clientApiFallback, clientServerError],
+  );
+
+  useEffect(() => {
+    if (!shouldRecordSession || !micStream || !interviewId) {
+      return;
+    }
+
+    recorderChunksRef.current = [];
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "";
+
+    let rec: MediaRecorder;
+    try {
+      rec = mime
+        ? new MediaRecorder(micStream, { mimeType: mime })
+        : new MediaRecorder(micStream);
+    } catch {
+      rec = new MediaRecorder(micStream);
+    }
+
+    recorderRef.current = rec;
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recorderChunksRef.current.push(e.data);
+      }
+    };
+
+    try {
+      rec.start(4000);
+    } catch {
+      recorderRef.current = null;
+      return;
+    }
+
+    return () => {
+      recorderRef.current = null;
+      if (rec.state !== "inactive") {
+        try {
+          rec.stop();
+        } catch {
+          /* */
+        }
+      }
+    };
+  }, [shouldRecordSession, micStream, interviewId]);
+
+  const micLevel = useMicLevel(speechListening, micStream);
 
   const { videoRef: cameraVideoRef, error: cameraError } = useCameraPreview(cameraOn);
 
@@ -211,6 +257,7 @@ function LiveInterviewInner() {
       finishOnceRef.current = true;
       void finishInterview();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- finishInterview reads latest store; adding it retriggers this effect every render
   }, [authReady, elapsedSeconds, interviewId, phase]);
 
   useEffect(() => {
@@ -259,7 +306,14 @@ function LiveInterviewInner() {
         iv.pushMessage("ai", res.question);
         iv.setCurrentQuestion(res.question);
         iv.setPhase("ai_speaking");
-        await Promise.all([playOptionalAudio(res.audioUrl), minDelay(400)]);
+        await Promise.all([
+          playRecruiterQuestionAudio({
+            audioUrl: res.audioUrl,
+            text: res.question,
+            voiceFallback: Boolean(res.voiceFallback),
+          }),
+          minDelay(400),
+        ]);
         if (cancelled || bootId !== bootSeq.current) {
           return;
         }
@@ -291,6 +345,61 @@ function LiveInterviewInner() {
     return <LiveFallback />;
   }
 
+  async function flushRecordingUpload(ivId: string | null): Promise<void> {
+    const auth = useAuthStore.getState();
+    const iv = useInterviewStore.getState();
+    const should =
+      auth.plan === "premium" &&
+      Boolean(ivId) &&
+      !iv.backendMockBanner &&
+      !iv.clientApiFallback &&
+      !iv.clientServerError;
+    if (!should || !auth.userId || !ivId) {
+      return;
+    }
+
+    const rec = recorderRef.current;
+    let mimeType = "audio/webm";
+    if (rec && rec.state !== "inactive") {
+      mimeType = rec.mimeType || mimeType;
+      await new Promise<void>((resolve) => {
+        const done = () => resolve();
+        rec.addEventListener("stop", done, { once: true });
+        try {
+          rec.stop();
+        } catch {
+          done();
+        }
+      });
+    }
+    recorderRef.current = null;
+
+    const blob = new Blob(recorderChunksRef.current, { type: mimeType });
+    recorderChunksRef.current = [];
+    if (blob.size < 500) {
+      return;
+    }
+
+    const sb = createSupabaseBrowserClient();
+    if (!sb) return;
+
+    const { data: sess } = await sb.auth.getSession();
+    const tok = sess.session?.access_token;
+    if (!tok) return;
+
+    try {
+      await uploadInterviewRecordingAudio({
+        userId: auth.userId,
+        interviewId: ivId,
+        accessToken: tok,
+        blob,
+        filename: "user-answers.webm",
+      });
+    } catch (e) {
+      console.warn("[recording]", e);
+    }
+  }
+
   async function finishInterview() {
     if (!interviewId || finishOnceRef.current) {
       return;
@@ -299,6 +408,7 @@ function LiveInterviewInner() {
     finishOnceRef.current = true;
     setPhase("thinking");
     try {
+      await flushRecordingUpload(interviewId);
       await minDelay(900);
       const fb = await feedbackInterviewApi({ interviewId, userId });
       setFeedback(fb);
@@ -350,7 +460,11 @@ function LiveInterviewInner() {
       pushMessage("ai", res.nextQuestion);
       setCurrentQuestion(res.nextQuestion);
       setPhase("ai_speaking");
-      await playOptionalAudio(res.audioUrl);
+      await playRecruiterQuestionAudio({
+        audioUrl: res.audioUrl,
+        text: res.nextQuestion,
+        voiceFallback: Boolean(res.voiceFallback),
+      });
       setPhase("listening");
     } catch {
       setPhase("listening");

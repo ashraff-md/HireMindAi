@@ -16,6 +16,7 @@ import { HeroWaveform } from "@/components/hero-waveform";
 import { HmGlowOrb } from "@/components/hm-glow-orb";
 import { HmGradientBorder } from "@/components/hm-gradient-border";
 import { HmCard } from "@/components/hm-card";
+import { PremiumCtaLink } from "@/components/premium-cta-link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -141,15 +142,14 @@ export default function LandingPage() {
             >
               Start Free
             </Link>
-            <Link
-              href="/#pricing"
+            <PremiumCtaLink
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "rounded-2xl border-white/25 bg-transparent",
               )}
             >
               Upgrade to Premium
-            </Link>
+            </PremiumCtaLink>
             <Link
               href="/interview/setup"
               className="w-full rounded-2xl border border-white/10 bg-transparent py-3 text-center text-sm font-semibold tracking-tight text-muted-foreground transition-colors hover:border-white/25 hover:text-foreground sm:w-auto sm:min-w-[200px] sm:px-8"
@@ -383,15 +383,14 @@ export default function LandingPage() {
               </ul>
             </CardContent>
             <div className="mt-auto w-full shrink-0 border-t border-white/10 pt-8 pb-4">
-              <Link
-                href="/register"
+              <PremiumCtaLink
                 className={cn(
                   buttonVariants({ size: "lg" }),
                   "flex h-12 w-full items-center justify-center rounded-xl border border-white/15 bg-gradient-to-r from-[#a855f7] to-[#3b82f6] text-white shadow-[0_0_46px_-18px_var(--hm-glow-mid)] hover:opacity-95",
                 )}
               >
                 Get Premium Access
-              </Link>
+              </PremiumCtaLink>
             </div>
           </HmCard>
         </div>

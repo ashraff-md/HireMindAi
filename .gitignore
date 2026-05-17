@@ -47,6 +47,10 @@ pnpm-debug.log*
 supabase/.branches/
 supabase/.temp/
 
+# Premium interview audio files (API local disk)
+backend\data\interview-recordings/
+backend/data/interview-recordings/
+
 # ── Misc ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

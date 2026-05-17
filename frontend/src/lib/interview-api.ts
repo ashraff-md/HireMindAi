@@ -16,12 +16,20 @@ import { useAuthStore } from "@/stores/auth-store";
 class ApiHttpError extends Error {
   readonly status: number;
   readonly hint?: string;
+  /** Machine-readable `error` field from JSON body, when present. */
+  readonly apiError?: string;
 
-  constructor(message: string, status: number, hint?: string) {
+  constructor(
+    message: string,
+    status: number,
+    hint?: string,
+    apiError?: string,
+  ) {
     super(message);
     this.name = "ApiHttpError";
     this.status = status;
     this.hint = hint;
+    this.apiError = apiError;
   }
 }
 
@@ -31,6 +39,19 @@ function isHttpServerError(e: unknown): e is ApiHttpError {
 
 function getApiErrorHint(e: unknown): string | undefined {
   return isHttpServerError(e) ? e.hint : undefined;
+}
+
+function throwIfGeminiQuotaExceeded(e: unknown): void {
+  if (
+    e instanceof ApiHttpError &&
+    e.status === 429 &&
+    e.apiError === "gemini_quota_exceeded"
+  ) {
+    throw new Error(
+      e.hint?.trim() ||
+        "Gemini quota exceeded. Wait and retry, set GEMINI_MODEL=gemini-1.5-flash, or USE_MOCK_AI=true.",
+    );
+  }
 }
 
 function forceMock(): boolean {
@@ -61,10 +82,14 @@ async function postJson<T>(
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
     let hint: string | undefined;
+    let apiError: string | undefined;
     try {
-      const j = JSON.parse(errBody) as { hint?: string };
+      const j = JSON.parse(errBody) as { hint?: string; error?: string };
       if (typeof j.hint === "string" && j.hint.trim()) {
         hint = j.hint.trim();
+      }
+      if (typeof j.error === "string" && j.error.trim()) {
+        apiError = j.error.trim();
       }
     } catch {
       /* plain text body */
@@ -73,6 +98,7 @@ async function postJson<T>(
       `API ${res.status}: ${errBody || res.statusText}`,
       res.status,
       hint,
+      apiError,
     );
   }
 
@@ -106,6 +132,16 @@ export async function startInterviewApi(args: {
       voiceFallback: data.voiceFallback,
     };
   } catch (e) {
+    if (
+      e instanceof ApiHttpError &&
+      e.status === 403 &&
+      e.apiError === "interview_monthly_limit"
+    ) {
+      throw new Error(
+        e.hint?.trim() || "You have reached your free monthly interview limit.",
+      );
+    }
+    throwIfGeminiQuotaExceeded(e);
     const m = await mockStartInterview({ role: args.role, mode: args.mode });
     if (isHttpServerError(e)) {
       return {
@@ -144,6 +180,7 @@ export async function respondInterviewApi(args: {
       voiceFallback: data.voiceFallback,
     };
   } catch (e) {
+    throwIfGeminiQuotaExceeded(e);
     const m = await mockSendAnswer({
       interviewId: args.interviewId,
       answer: args.answer,
@@ -176,6 +213,7 @@ export async function feedbackInterviewApi(args: {
     );
     return { ...data, mock };
   } catch (e) {
+    throwIfGeminiQuotaExceeded(e);
     const m = await mockGetFeedback({ interviewId: args.interviewId });
     if (isHttpServerError(e)) {
       return {

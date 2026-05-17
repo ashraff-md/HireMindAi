@@ -52,7 +52,10 @@ export async function POST(request: Request) {
     }
     const quota = geminiQuotaErrorResponse(err);
     if (quota) {
-      return hiremindJson(quota.body, { status: quota.status });
+      return hiremindJson(quota.body, {
+        status: quota.status,
+        headers: quota.headers,
+      });
     }
     const hint = interviewFailureHint(err);
     return hiremindJson(

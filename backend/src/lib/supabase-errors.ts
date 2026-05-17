@@ -1,5 +1,7 @@
 /** Maps Supabase / Postgres client errors to API responses for the interview routes. */
 
+import { InterviewMonthlyLimitError } from "@/lib/interview-quota";
+
 export const SCHEMA_MISSING_HINT =
   "Supabase is missing HireMind tables. In Dashboard → SQL Editor, run supabase/BUNDLE_all_migrations.sql (full app) or supabase/MINIMAL_interview_only.sql (interviews only). Wait ~1 minute for the API schema cache, restart the backend, clear sessionStorage key hm_block_users_plan if you had 404s, then hard-refresh.";
 
@@ -105,6 +107,15 @@ export function interviewStartErrorResponse(err: unknown): {
   status: number;
   body: { error: string; hint: string };
 } | null {
+  if (err instanceof InterviewMonthlyLimitError) {
+    return {
+      status: 403,
+      body: {
+        error: err.code,
+        hint: err.message,
+      },
+    };
+  }
   if (isDatabaseSchemaMissingError(err)) {
     return {
       status: 503,

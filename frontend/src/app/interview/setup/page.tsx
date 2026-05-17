@@ -19,6 +19,10 @@ import {
   personalityById,
   type PersonalityId,
 } from "@/lib/interview-options";
+import {
+  fetchInterviewMonthlyUsage,
+  type InterviewMonthlyUsage,
+} from "@/lib/interview-monthly-usage";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useInterviewStore } from "@/stores/interview-store";
@@ -55,6 +59,8 @@ function MiniStatBar({
 export default function InterviewSetupPage() {
   const router = useRouter();
   const plan = useAuthStore((s) => s.plan);
+  const authReady = useAuthStore((s) => s.authReady);
+  const userId = useAuthStore((s) => s.userId);
   const premium = plan === "premium";
   const resetSession = useInterviewStore((s) => s.resetSession);
   const setMeta = useInterviewStore((s) => s.setMeta);
@@ -79,6 +85,32 @@ export default function InterviewSetupPage() {
     }
   }, [premium, personalityId]);
 
+  const [monthlyUsage, setMonthlyUsage] = useState<InterviewMonthlyUsage | null>(null);
+
+  useEffect(() => {
+    if (!authReady || premium || !userId) {
+      setMonthlyUsage(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const u = await fetchInterviewMonthlyUsage();
+      if (!cancelled) {
+        setMonthlyUsage(u);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, premium, userId]);
+
+  const freeMonthBlocked =
+    !premium &&
+    monthlyUsage != null &&
+    monthlyUsage.plan === "free" &&
+    monthlyUsage.remainingFreeThisMonth !== null &&
+    monthlyUsage.remainingFreeThisMonth <= 0;
+
   const formattedDate = useMemo(
     () =>
       new Intl.DateTimeFormat(undefined, {
@@ -90,6 +122,9 @@ export default function InterviewSetupPage() {
   );
 
   function handleStart() {
+    if (freeMonthBlocked) {
+      return;
+    }
     const effectivePersonality: PersonalityId =
       premium ? personalityId : INTERVIEW_PERSONALITIES[0]?.id ?? "corporate_hr";
     const effectivePersonalityMeta = personalityById(effectivePersonality);
@@ -134,6 +169,24 @@ export default function InterviewSetupPage() {
             Fine-tune the HireMind AI parameters for your upcoming technical evaluation — role fit,
             challenge curve, and evaluator tone all sync downstream.
           </p>
+          {!premium &&
+          monthlyUsage &&
+          monthlyUsage.plan === "free" &&
+          monthlyUsage.remainingFreeThisMonth != null ? (
+            <p
+              className={cn(
+                "mx-auto max-w-3xl rounded-xl border px-4 py-3 text-sm md:mx-0",
+                freeMonthBlocked
+                  ? "border-destructive/50 bg-destructive/10 text-destructive"
+                  : "border-border/80 bg-muted/40 text-muted-foreground",
+              )}
+            >
+              <span className="font-medium text-foreground">Free plan: </span>
+              {freeMonthBlocked
+                ? `You've used all ${monthlyUsage.freeMonthlyLimit} interview preparations this month (UTC). Upgrade for unlimited sessions.`
+                : `${monthlyUsage.remainingFreeThisMonth} of ${monthlyUsage.freeMonthlyLimit} free preparations left this month (UTC). Premium is unlimited.`}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -277,6 +330,7 @@ export default function InterviewSetupPage() {
             type="button"
             size="lg"
             variant="outline"
+            disabled={freeMonthBlocked}
             className="w-full rounded-2xl border-dashed border-primary/52 py-6 text-base lg:hidden"
             onClick={handleStart}
           >
@@ -341,10 +395,11 @@ export default function InterviewSetupPage() {
               </p>
               <button
                 type="button"
+                disabled={freeMonthBlocked}
                 onClick={() => handleStart()}
                 className={cn(
                   buttonVariants({ size: "lg" }),
-                  "min-h-14 w-full gap-3 rounded-xl border-0 bg-gradient-to-r from-[#e9d5ff] via-[#d8b4fe] to-[#a855f7] py-7 font-display text-base font-semibold text-[#0b0414] shadow-[0_36px_60px_-32px_rgb(148,118,237)] hover:opacity-[0.94]",
+                  "min-h-14 w-full gap-3 rounded-xl border-0 bg-gradient-to-r from-[#e9d5ff] via-[#d8b4fe] to-[#a855f7] py-7 font-display text-base font-semibold text-[#0b0414] shadow-[0_36px_60px_-32px_rgb(148,118,237)] hover:opacity-[0.94] disabled:opacity-45",
                 )}
               >
                 <Play className="size-6 fill-purple-950 text-purple-950" aria-hidden />

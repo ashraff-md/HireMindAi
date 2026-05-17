@@ -22,6 +22,7 @@ import {
   pickMockInterviewQuestion,
   shouldUseMockAi,
 } from "./mock";
+import { isGeminiQuotaError } from "./interview-api-errors";
 
 function getGeminiApiKey(): string {
   const key =
@@ -41,9 +42,12 @@ export function getGeminiClient(): GoogleGenerativeAI {
 }
 
 function geminiModelId(): string {
-  // 1.5-flash often has more generous free-tier limits than 2.0-flash; override with GEMINI_MODEL.
+  // 1.5-flash often has more generous free-tier limits than 2.x / 2.5; override with GEMINI_MODEL.
   return process.env.GEMINI_MODEL?.trim() || "gemini-1.5-flash";
 }
+
+/** When the configured model hits 429, try this once (separate free-tier counter). */
+const GEMINI_QUOTA_FALLBACK_MODEL = "gemini-1.5-flash";
 
 function jsonOnlyInstruction() {
   return "Respond with JSON ONLY. No markdown fences.";
@@ -57,14 +61,17 @@ function stripJsonFence(s: string): string {
   return t;
 }
 
-async function generateGeminiJson(args: {
-  systemInstruction: string;
-  userText: string;
-  temperature: number;
-}): Promise<string> {
+async function generateGeminiJsonWithModel(
+  args: {
+    systemInstruction: string;
+    userText: string;
+    temperature: number;
+  },
+  modelId: string,
+): Promise<string> {
   const genAI = getGeminiClient();
   const model = genAI.getGenerativeModel({
-    model: geminiModelId(),
+    model: modelId,
     systemInstruction: args.systemInstruction,
     generationConfig: {
       temperature: args.temperature,
@@ -75,6 +82,25 @@ async function generateGeminiJson(args: {
   const result = await model.generateContent(args.userText);
   const raw = result.response.text()?.trim() ?? "{}";
   return stripJsonFence(raw);
+}
+
+async function generateGeminiJson(args: {
+  systemInstruction: string;
+  userText: string;
+  temperature: number;
+}): Promise<string> {
+  const primary = geminiModelId();
+  try {
+    return await generateGeminiJsonWithModel(args, primary);
+  } catch (err) {
+    if (!isGeminiQuotaError(err) || primary === GEMINI_QUOTA_FALLBACK_MODEL) {
+      throw err;
+    }
+    console.warn(
+      `[gemini] Model "${primary}" quota or rate limit; retrying once with "${GEMINI_QUOTA_FALLBACK_MODEL}".`,
+    );
+    return await generateGeminiJsonWithModel(args, GEMINI_QUOTA_FALLBACK_MODEL);
+  }
 }
 
 export async function aiFirstInterviewQuestion(input: {

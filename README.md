@@ -5,7 +5,7 @@ Monorepo for **HireMind AI**, a voice-forward AI interview coach.
 ## Structure
 
 - **[`frontend/`](frontend/)** — Next.js App Router UI (Tailwind v4, shadcn/ui, Framer Motion, dual theme). Proxies `/api/*` to the backend in development.
-- **[`backend/`](backend/)** — Next.js API routes + services (Google Gemini, ElevenLabs, Supabase admin, PayHere, resume PDF parsing).
+- **[`backend/`](backend/)** — Next.js API routes + services (Google Gemini, ElevenLabs, Supabase admin, resume PDF parsing; payment gateway TBI).
 - **[`supabase/`](supabase/)** — SQL migrations (shared infra).
 
 ## Prerequisites
@@ -15,7 +15,7 @@ Monorepo for **HireMind AI**, a voice-forward AI interview coach.
 
 ## Environment
 
-- **Backend secrets**: copy variables into [`backend/.env.local`](backend/.env.local) (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY` or `GOOGLE_AI_API_KEY`, optional `GEMINI_MODEL`, ElevenLabs/PayHere keys — see existing repo `.env.example` if present).
+- **Backend secrets**: copy variables into [`backend/.env.local`](backend/.env.local) (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY` or `GOOGLE_AI_API_KEY`, optional `GEMINI_MODEL`, optional ElevenLabs — see [`backend/.env.example`](backend/.env.example)).
 - **Frontend public vars**: copy [`frontend/.env.example`](frontend/.env.example) → `frontend/.env.local`. Without Supabase keys you can still run guest/mock flows.
 - **Voice mock asset**: optional file at `backend/public/mock-interviewer.mp3`; otherwise set `PUBLIC_APP_URL=http://127.0.0.1:3001` so mocked audio URLs resolve.
 

@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { History, Play } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { displayNameFromEmail } from "@/lib/display-name";
+import {
+  fetchMyInterviewsWithFeedback,
+  formatInterviewHistoryDate,
+  type InterviewHistoryEntry,
+} from "@/lib/interview-history";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -57,6 +62,25 @@ function DashboardEmptyHint({
 export default function DashboardPage() {
   const email = useAuthStore((s) => s.email);
   const plan = useAuthStore((s) => s.plan);
+  const authReady = useAuthStore((s) => s.authReady);
+
+  const [recent, setRecent] = useState<InterviewHistoryEntry[]>([]);
+
+  const loadRecent = useCallback(async () => {
+    if (plan !== "premium") {
+      setRecent([]);
+      return;
+    }
+    const rows = await fetchMyInterviewsWithFeedback();
+    const withFeedback = rows.filter((r) => r.feedback);
+    setRecent(withFeedback.slice(0, 3));
+  }, [plan]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const t = window.setTimeout(() => void loadRecent(), 0);
+    return () => window.clearTimeout(t);
+  }, [authReady, loadRecent]);
 
   const greetingName = displayNameFromEmail(email);
   const weekday = useMemo(
@@ -138,11 +162,58 @@ export default function DashboardPage() {
         </article>
 
         <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Performance pulse</p>
-          <DashboardEmptyHint
-            title="No performance data yet"
-            body="Scores and skill breakdowns will appear here after you complete at least one interview with feedback."
-          />
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            Performance pulse
+          </p>
+          {plan === "premium" && recent.length > 0 ? (
+            <div className="space-y-3 rounded-2xl border border-white/55 bg-background/75 p-5 shadow-inner backdrop-blur-md dark:border-white/10 dark:bg-black/35">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Recent sessions
+              </p>
+              <ul className="space-y-3">
+                {recent.map((r) => {
+                  const f = r.feedback!;
+                  const avg = Math.round(
+                    (Number(f.communication_score) +
+                      Number(f.technical_score) +
+                      Number(f.confidence_score)) /
+                      3,
+                  );
+                  return (
+                    <li
+                      key={r.id}
+                      className="flex items-center justify-between gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{r.role}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatInterviewHistoryDate(r.created_at)}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0 tabular-nums">
+                        {avg}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Link
+                href="/history"
+                className="inline-block text-xs font-semibold text-primary underline-offset-4 hover:underline"
+              >
+                Full history →
+              </Link>
+            </div>
+          ) : (
+            <DashboardEmptyHint
+              title="No performance data yet"
+              body={
+                plan === "premium"
+                  ? "Complete an interview with feedback — your latest scores will show here."
+                  : "Scores and skill breakdowns appear here for Premium members after cloud interviews with feedback."
+              }
+            />
+          )}
         </div>
       </section>
 
